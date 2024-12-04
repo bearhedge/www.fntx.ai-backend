@@ -100,7 +100,7 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if not user.check_password(password):
             raise serializers.ValidationError(
-                {"error": _("Invalid email or password.")}
+                {"error": _("Incorrect password. Please try again.")}
             )
 
         refresh = self.get_token(user)
