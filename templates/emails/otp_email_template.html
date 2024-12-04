@@ -1,0 +1,73 @@
+{% load static i18n %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTP Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            margin: 0;
+            padding: 0;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            max-width: 150px;
+            margin: 0 auto 20px auto;
+            display: block;
+        }
+
+        .otp-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #212529;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .content {
+            font-size: 16px;
+            color: #555;
+            line-height: 1.6;
+            text-align: center;
+
+        }
+        .footer {
+            font-size: 14px;
+            color: #999;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .footer strong {
+            display: block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <img src="{{host}}{% static 'assests/img/Group 13.png' %}" alt="FNTX Logo" class="logo">
+
+        <div class="content">
+            <p>Your One-Time Password (OTP) is:</p>
+            <div class="otp-code">{{ otp }}</div>
+            <p><strong>For your security, do not share this OTP with anyone.</strong></p>
+            <p>If you didn’t request this, please contact our support team immediately.</p>
+        </div>
+        <div class="footer">
+            Thank you,<br>
+            <strong>FNTX</strong>
+            <br>
+        </div>
+    </div>
+</body>
+</html>

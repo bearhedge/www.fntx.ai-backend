@@ -1,5 +1,6 @@
 import pyotp
 from django.core.exceptions import MultipleObjectsReturned
+from django.template.loader import render_to_string
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
@@ -101,13 +102,18 @@ class SendForgotPasswordEmail(APIView):
         totp = pyotp.TOTP("base32secret3232")
         otp = totp.now()
         email = serializer.validated_data.get("email")
+        host = f"{request.scheme}://{request.META['HTTP_HOST']}"
+
         CustomUser.objects.filter(email__icontains=email).update(
             otp=otp
         )
+        html_message = render_to_string('emails/otp_email_template.html', {'otp': otp, 'host': host})
+
         send_email(
-            "OTP Verification",
-            f"The otp to change your password is {otp}",
+            "OTP Verification for FINTX",
+            "",
             [email],
+            html_message
         )
         return Response({"status": "OTP sent successfully."}, status=status.HTTP_200_OK)
 
