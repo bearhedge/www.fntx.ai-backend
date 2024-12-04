@@ -1,6 +1,7 @@
 import re
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 
 from accounts.models import *
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -15,10 +16,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         exclude = ["last_login", "is_staff", "is_active", "is_superuser", "otp"]
+
         extra_kwargs = {
             "username": {"required": True},
             "email": {"required": True},
         }
+
+    def validate_email(self, value):
+        """
+        Custom validation for the email field.
+        """
+        if CustomUser.objects.filter(email__icontains=value).exists():
+            raise serializers.ValidationError("User with this email has already been registered.")
+        return value
 
     def validate(self, attrs):
         password = attrs.get("password")
@@ -77,7 +87,7 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
             )
 
         try:
-            user = CustomUser.objects.get(email=email, is_active=True, is_superuser=False)
+            user = CustomUser.objects.get(email__icontains=email, is_active=True, is_superuser=False)
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError(
                 {"error": _("Account with this email does not exist.")}
@@ -178,7 +188,7 @@ class OTPEmailVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        if not CustomUser.objects.filter(email=value).exists():
+        if not CustomUser.objects.filter(email__icontains=value).exists():
             raise serializers.ValidationError("No user exists with the provided email.")
         else:
             return value
