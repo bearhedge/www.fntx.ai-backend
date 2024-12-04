@@ -6,8 +6,8 @@ from core.models import BaseModel
 
 
 class CustomUser(AbstractBaseUser, BaseModel):
-    username = models.CharField(max_length=50, unique=True)
-    email = models.EmailField(unique=True)
+    username = models.CharField(max_length=50, unique=True, error_messages={'unique':"User with this username has already been registered."})
+    email = models.EmailField(unique=True, error_messages={'unique':"User with this email has already been registered."})
     otp = models.CharField(max_length=10, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

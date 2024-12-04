@@ -101,7 +101,7 @@ class SendForgotPasswordEmail(APIView):
         totp = pyotp.TOTP("base32secret3232")
         otp = totp.now()
         email = serializer.validated_data.get("email")
-        CustomUser.objects.filter(email=email).update(
+        CustomUser.objects.filter(email__icontains=email).update(
             otp=otp
         )
         send_email(
