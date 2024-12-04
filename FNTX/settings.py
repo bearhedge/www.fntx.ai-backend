@@ -41,6 +41,7 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -91,8 +92,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'FNTX.wsgi.application'
-
+#WSGI_APPLICATION = 'FNTX.wsgi.application'
+ASGI_APPLICATION = 'FNTX.asgi.application' 
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -256,4 +257,4 @@ CELERY_RESULT_EXTENDED = True
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = ["*"]
-IBKR_BASE_URL = "https://localhost:5000/v1/api"
+IBKR_BASE_URL = "https://client.fntx.ai/v1/api"
