@@ -130,7 +130,7 @@ class ResetPassword(APIView):
         email = serializer.validated_data.get("email")
         password = serializer.validated_data.get("password")
         try:
-            user_obj = CustomUser.objects.get(email=email)
+            user_obj = CustomUser.objects.get(email__icontains=email)
         except MultipleObjectsReturned:
             return Response(
                 {"error": "Something went wrong"}, status=status.HTTP_400_BAD_REQUEST
