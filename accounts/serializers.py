@@ -109,10 +109,10 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = {"refresh": str(refresh), "access": str(refresh.access_token), "user": {
             "username": user.username,
             "email": user.email,
-            "ibkr_authentication": onboarding_process.authenticated if onboarding_process else False,
-            "level_4_permission": onboarding_process.level_4_permission if onboarding_process else False,
-            "active_subscription": onboarding_process.active_subscription if onboarding_process else False,
-            "metamask_address": onboarding_process.metamask_address if onboarding_process else ""
+            "ibkr_authentication": onboarding_process.authenticated if onboarding_process else None,
+            "level_4_permission": onboarding_process.level_4_permission if onboarding_process else None,
+            "active_subscription": onboarding_process.active_subscription if onboarding_process else None,
+            "metamask_address": onboarding_process.metamask_address if onboarding_process else None
         }}
 
         return data

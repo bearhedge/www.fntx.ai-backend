@@ -1,15 +1,15 @@
-from http.client import responses
-
 import requests
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess
+from ibkr.serializers import OnboardingSerailizer
 
 
 @extend_schema(tags=["IBKR"])
@@ -31,12 +31,11 @@ class AuthStatusView(APIView, IBKRBase):
             if response.get('success'):
                 if response.get('data').get('authenticated'):
                     create, _ = OnBoardingProcess.objects.update_or_create(user=user, defaults={"authenticated":True})
+                    return Response(response.get('data'), status=status.HTTP_200_OK)
+
                 else:
                     create, _ = OnBoardingProcess.objects.update_or_create(user=user, defaults={"authenticated":False})
-
-                return Response(response['data'], status=status.HTTP_200_OK)
-            else:
-                return Response({'error': response['error']}, status=response["status"])
+            return Response({'error': response.get('error')}, status=response.get('status'))
 
         except requests.exceptions.RequestException as e:
             return Response(
@@ -66,14 +65,36 @@ class AccountSummaryView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@extend_schema(tags=["Platform Requirements"])
+class OnboardingView(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get']
+    serializer_class = OnboardingSerailizer
 
-# class MarketDataView(APIView):
-#     def get(self, request, *args, **kwargs):
-#         con_id = request.query_params.get('con_id')
-#         if not con_id:
-#             return Response({'error': 'ConId parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
-#         try:
-#             data = get_market_data(int(con_id))
-#             return Response({'data': data}, status=status.HTTP_200_OK)
-#         except Exception as e:
-#             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    def get_queryset(self):
+        return OnBoardingProcess.objects.all()
+
+    @extend_schema(summary="Get onboarding details for the authenticated user")
+    @action(detail=False, methods=["get"], url_path="user-onboarding", url_name="user_onboarding")
+    def user_onboarding(self, request):
+        """
+        Retrieve the onboarding details for the authenticated user.
+        """
+        user = request.user
+        try:
+            instance = OnBoardingProcess.objects.get(user=user)
+        except OnBoardingProcess.DoesNotExist:
+            return Response(
+                {
+                    "authenticated": None,
+                    "level_4_permission": None,
+                    "active_subscription": None,
+                    "metamask_address": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Serialize the instance
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+

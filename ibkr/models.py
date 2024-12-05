@@ -6,9 +6,9 @@ from core.models import BaseModel
 
 class OnBoardingProcess(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    authenticated = models.BooleanField(default=False)
-    level_4_permission = models.BooleanField(default=False)
-    active_subscription = models.BooleanField(default=False)
+    authenticated = models.BooleanField(null=True)
+    level_4_permission = models.BooleanField(null=True)
+    active_subscription = models.BooleanField(null=True)
     metamask_address = models.CharField(max_length=500, blank=True, null=True)
 
     def __str__(self):

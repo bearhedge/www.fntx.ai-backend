@@ -1,3 +1,5 @@
 from django.contrib import admin
 
-# Register your models here.
+from ibkr.models import OnBoardingProcess
+
+admin.site.register(OnBoardingProcess)
