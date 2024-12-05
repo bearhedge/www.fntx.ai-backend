@@ -157,7 +157,7 @@ class ResetPassword(APIView):
             )
         else:
             return Response(
-                {"error": "Otp verification failed. Please enter valid OTP"},
+                {"error": "OTP verification failed. Please enter valid OTP"},
                 status=status.HTTP_406_NOT_ACCEPTABLE,
             )
 @extend_schema(tags=["Authorization"])
