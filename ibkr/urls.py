@@ -10,6 +10,7 @@ router.register("onboarding", OnboardingView, "onboarding")
 urlpatterns = [
     path('auth-status/', AuthStatusView.as_view(), name='auth_status'),
     path('account_summary/', AccountSummaryView.as_view(), name='account_summary'),
+
     path("", include(router.urls)),
 
 ]

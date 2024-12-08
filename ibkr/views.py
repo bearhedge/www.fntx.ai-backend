@@ -68,7 +68,7 @@ class AccountSummaryView(APIView):
 @extend_schema(tags=["Platform Requirements"])
 class OnboardingView(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    http_method_names = ['get']
+    http_method_names = ['get', 'post', 'patch']
     serializer_class = OnboardingSerailizer
 
     def get_queryset(self):
