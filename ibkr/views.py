@@ -30,17 +30,32 @@ class AuthStatusView(APIView, IBKRBase):
 
             if response.get('success'):
                 if response.get('data').get('authenticated'):
-                    create, _ = OnBoardingProcess.objects.update_or_create(user=user, defaults={"authenticated":True})
+                    onboarding_process, _ = OnBoardingProcess.objects.update_or_create(
+                        user=user, defaults={"authenticated": True}
+                    )
+                    if onboarding_process.periodic_task:
+                        onboarding_process.periodic_task.enabled = True
+                        onboarding_process.periodic_task.save()
+
                     return Response(response.get('data'), status=status.HTTP_200_OK)
 
                 else:
-                    create, _ = OnBoardingProcess.objects.update_or_create(user=user, defaults={"authenticated":False})
-            return Response({'error': response.get('error')}, status=response.get('status'))
+                    # Disable the task if the user is not authenticated with client portal
+                    onboarding_process, _ = OnBoardingProcess.objects.update_or_create(
+                        user=user, defaults={"authenticated": False}
+                    )
+                    if onboarding_process.periodic_task:
+                        onboarding_process.periodic_task.enabled = False
+                        onboarding_process.periodic_task.save()
+
+            return Response(
+                {"error": response.get("error")}, status=response.get("status")
+            )
 
         except requests.exceptions.RequestException as e:
             return Response(
                 {"error": "Error connecting to IBKR API", "details": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 

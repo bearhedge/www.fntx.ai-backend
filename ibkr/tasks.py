@@ -8,38 +8,49 @@ from ibkr.models import OnBoardingProcess
 
 
 @shared_task
-def tickle_ibkr_session(data):
+def tickle_ibkr_session(data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
     """
+    onboarding_id = data.get('onboarding_id')
+    user_id = data.get('user_id')
+    task_id = data.get('task_id')
+
+    onboarding_obj = OnBoardingProcess.objects.filter(id=onboarding_id, user_id=user_id).first()
+    if not onboarding_obj:
+        return {"error": "Onboarding instance not found."}
+
+    ibkr = IBKRBase()
+    response = ibkr.auth_status()
+
+    if not response.get('success'):
+        return _disable_task_and_update_status(onboarding_obj, task_id)
+
+    tickle_url = f"{settings.IBKR_BASE_URL}/tickle"
+
     try:
-        onboarding_id = data.get('onboarding_id')
-        user_id = data.get('user_id')
-        task_id = data.get('task_id')
-        onboarding_obj = OnBoardingProcess.objects.filter(id=onboarding_id, user_id=user_id).first()
-        auth_fail = False
-        ibkr = IBKRBase()
-        response = ibkr.auth_status()
-        if response.get('success'):
-            tickle_url = f"{settings.IBKR_BASE_URL}/tickle"
-            response = requests.post(tickle_url, verify=False)
-
-            if not response.status_code == 200:
-                auth_fail = True
-                return {
-                    "message": "Failed to tickle IBKR session",
-                    "status_code": response.status_code,
-                }
-        else:
-            auth_fail = True
-
-        if auth_fail:
-            onboarding_obj.authenticated = False
-            onboarding_obj.save()
-
-            # disable the task
-            task = PeriodicTask.objects.get(id=task_id)
-            task.enabled = False
-            task.save()
+        tickle_response = requests.post(tickle_url, verify=False)
+        if tickle_response.status_code != 200:
+            return _disable_task_and_update_status(onboarding_obj, task_id)
     except requests.exceptions.RequestException as e:
-        return {"error": "Error hitting IBKR tickle endpoint", "details": str(e)}
+        return {"error": "Error hitting IBKR tickle endpoint.", "details": str(e)}
+
+    return {
+        "message": "Task run successfully",
+        "status_code": tickle_response.status_code,
+    }
+
+
+def _disable_task_and_update_status(onboarding_obj, task_id):
+    """
+    Helper function to disable a task and update onboarding status.
+    """
+    onboarding_obj.authenticated = False
+    onboarding_obj.save()
+
+    task = PeriodicTask.objects.filter(id=task_id).first()
+    if task:
+        task.enabled = False
+        task.save()
+
+    return {"message": "Authentication failed. Task disabled."}
