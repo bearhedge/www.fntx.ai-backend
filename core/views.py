@@ -14,7 +14,7 @@ class IBKRBase:
             else:
                 return {"success": False, "error": "Unable to authenticate with IBKR API. Please login on client portal.", "status": response.status_code}
         except requests.exceptions.RequestException as e:
-            return {"success": False, "error": str(e), "status": 500}
+            return {"success": False, "error": "Unable to authenticate with IBKR API", "status": 500}
 
 
     def reauthenticate(self):
@@ -29,4 +29,20 @@ class IBKRBase:
                 return {"success": False, "status": response.status_code}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
+
+
+    # Instantiate the Option Chain
+    def get_spy_conId(self):
+        """
+        Fetch the data for a particular symbol
+        """
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/search?symbol=SPX", verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except Exception as e:
+            return {"success": False, "error": str(e), "status": 500}
+
 

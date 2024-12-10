@@ -98,3 +98,30 @@ class OnboardingView(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+@extend_schema(tags=["IBKR"])
+class Subscription(AuthStatusView):
+    def get(self, request):
+        try:
+            response = self.auth_status()
+
+            if response.get('success'):
+                if response.get('data').get('authenticated'):
+                    search_spy_data = self.get_spy_conId()
+                    conids = search_spy_data.get("data")[0].get("conid")
+                    request_url = f"{self.ibkr_base_url}/iserver/accounts"
+                    ll = requests.get(url=request_url, verify=False)
+                    print(ll.json())
+                    data_url = f"{self.ibkr_base_url}/iserver/marketdata/snapshot?conids=141513582&fields=31,84,86"
+                    response = requests.get(url=data_url, verify=False)
+                    print(response, "===============")
+                    return Response(response.json(), status=status.HTTP_200_OK)
+
+
+            return Response({'error': response.get('error')}, status=response.get('status'))
+
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {"error": "Error connecting to IBKR API", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
