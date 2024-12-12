@@ -1,3 +1,5 @@
+import json
+
 import requests
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
@@ -6,10 +8,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
-
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess
-from ibkr.serializers import OnboardingSerailizer
+from ibkr.models import OnBoardingProcess, TradingStatus, Instrument
+from ibkr.serializers import OnboardingSerailizer, SystemDataSerializer, OrderDataSerializer, InstrumentSerializer, TradingStatusSerializer
 
 
 @extend_schema(tags=["IBKR"])
@@ -125,3 +127,77 @@ class Subscription(AuthStatusView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+@extend_schema(tags=["IBKR"])
+class SystemDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['post']
+    serializer_class = SystemDataSerializer
+
+    def post(self, request):
+        serializer = SystemDataSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@extend_schema(tags=["IBKR"])
+class OrderDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['post']
+    serializer_class = OrderDataSerializer
+
+    def post(self, request):
+        serializer = OrderDataSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@extend_schema(tags=["IBKR"])
+class TradingStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            trading_status = TradingStatus.objects.get(user=request.user)
+            return Response({
+                'status': trading_status.status,
+                'wait_time': trading_status.wait_time
+            }, status=status.HTTP_200_OK)
+        except TradingStatus.DoesNotExist:
+            return Response({'error': 'Trading status not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        serializer = TradingStatusSerializer(data=request.data)
+        if serializer.is_valid():
+            trading_status, created = TradingStatus.objects.update_or_create(
+                user=request.user,
+                defaults=serializer.validated_data
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@extend_schema(tags=["IBKR"])
+class InstrumentListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']
+    serializer_class = InstrumentSerializer
+
+    def get(self, request):
+        instruments = Instrument.objects.all()
+        serializer = InstrumentSerializer(instruments, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = InstrumentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@extend_schema(tags=["IBKR"])
+class InstrumentDetailView(RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Instrument.objects.all()
+    serializer_class = InstrumentSerializer
+    lookup_field = 'id'
