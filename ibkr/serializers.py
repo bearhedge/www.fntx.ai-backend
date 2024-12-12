@@ -7,5 +7,5 @@ class OnboardingSerailizer(serializers.ModelSerializer):
 
     class Meta:
         model = OnBoardingProcess
-        fields = "__all__"
+        exclude = ('periodic_task',)
         depth = 1

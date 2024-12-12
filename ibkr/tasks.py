@@ -1,23 +1,56 @@
 from celery import shared_task
 import requests
 from django.conf import settings
+from django_celery_beat.models import PeriodicTask
+
+from core.views import IBKRBase
+from ibkr.models import OnBoardingProcess
 
 
 @shared_task
-def tickle_ibkr_session():
+def tickle_ibkr_session(data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
     """
-    try:
-        tickle_url = f"{settings.IBKR_BASE_URL}/tickle"
-        response = requests.post(tickle_url, verify=False)
+    onboarding_id = data.get('onboarding_id')
+    user_id = data.get('user_id')
+    task_id = data.get('task_id')
 
-        if response.status_code == 200:
-            return {"message": "IBKR tickle successful", "status_code": 200}
-        else:
-            return {
-                "message": "Failed to tickle IBKR session",
-                "status_code": response.status_code,
-            }
+    onboarding_obj = OnBoardingProcess.objects.filter(id=onboarding_id, user_id=user_id).first()
+    if not onboarding_obj:
+        return {"error": "Onboarding instance not found."}
+
+    ibkr = IBKRBase()
+    response = ibkr.auth_status()
+
+    if not response.get('success'):
+        return _disable_task_and_update_status(onboarding_obj, task_id)
+
+    tickle_url = f"{settings.IBKR_BASE_URL}/tickle"
+
+    try:
+        tickle_response = requests.post(tickle_url, verify=False)
+        if tickle_response.status_code != 200:
+            return _disable_task_and_update_status(onboarding_obj, task_id)
     except requests.exceptions.RequestException as e:
-        return {"error": "Error hitting IBKR tickle endpoint", "details": str(e)}
+        return {"error": "Error hitting IBKR tickle endpoint.", "details": str(e)}
+
+    return {
+        "message": "Task run successfully",
+        "status_code": tickle_response.status_code,
+    }
+
+
+def _disable_task_and_update_status(onboarding_obj, task_id):
+    """
+    Helper function to disable a task and update onboarding status.
+    """
+    onboarding_obj.authenticated = False
+    onboarding_obj.save()
+
+    task = PeriodicTask.objects.filter(id=task_id).first()
+    if task:
+        task.enabled = False
+        task.save()
+
+    return {"message": "Authentication failed. Task disabled."}
