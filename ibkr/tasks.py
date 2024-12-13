@@ -4,7 +4,7 @@ from django.conf import settings
 from django_celery_beat.models import PeriodicTask
 
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess
+from ibkr.models import OnBoardingProcess, TimerData
 
 
 @shared_task
@@ -54,3 +54,12 @@ def _disable_task_and_update_status(onboarding_obj, task_id):
         task.save()
 
     return {"message": "Authentication failed. Task disabled."}
+
+@shared_task
+def deactivate_timer(user_id):
+    try:
+        timer_data = TimerData.objects.get(user_id=user_id, is_active=True)
+        timer_data.is_active = False
+        timer_data.save()
+    except TimerData.DoesNotExist:
+        pass

@@ -2,7 +2,7 @@ import json
 
 import requests
 from django.conf import settings
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
@@ -10,8 +10,9 @@ from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess, TradingStatus, Instrument
-from ibkr.serializers import OnboardingSerailizer, SystemDataSerializer, OrderDataSerializer, InstrumentSerializer, TradingStatusSerializer
+from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData
+from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, OrderDataSerializer, InstrumentSerializer, TradingStatusSerializer
+from tinycss2 import serialize
 
 
 @extend_schema(tags=["IBKR"])
@@ -216,3 +217,100 @@ class InstrumentDetailView(RetrieveUpdateDestroyAPIView):
     queryset = Instrument.objects.all()
     serializer_class = InstrumentSerializer
     lookup_field = 'id'
+
+
+@extend_schema(tags=["IBKR"])
+class TimerDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TimerDataSerializer
+    http_method_names = ['get', 'post']
+
+    def get(self, request):
+        try:
+            timer_data = TimerData.objects.get(user=request.user)
+            serializer = TimerDataSerializer(timer_data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except TimerData.DoesNotExist:
+            return Response({'error': 'No timer data found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request, deactivate_timer=None):
+        if TimerData.objects.filter(user=request.user, is_active=True).exists():
+            return Response({'error': 'Timer is already running'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = TimerDataSerializer(data=request.data)
+        if serializer.is_valid():
+            timer_data = serializer.save(user=request.user)
+            # Schedule the task to deactivate the timer after the specified time
+            deactivate_timer.apply_async((request.user.id,), countdown=timer_data.timer_value)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=["IBKR"], parameters=[OpenApiParameter(name="symbol", description="Stock symbol", required=True, type=str)])
+class SymbolDataView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        symbol = request.query_params.get('symbol')
+        if not symbol:
+            return Response({'error': 'Symbol parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        url = f"https://localhost:5000/v1/api/trsrv/stocks?symbols={symbol}"
+        try:
+            response = requests.get(url, verify=False)
+            if response.status_code == 200:
+                data = response.json()
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Failed to fetch data from the external API'}, status=response.status_code)
+        except requests.exceptions.RequestException as e:
+            return Response({'error': 'Error connecting to the external API', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(tags=["IBKR"])
+class MarketDataView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access this endpoint
+    serializer_class = UpperLowerBoundSerializer  # Associate the serializer with this view
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            try:
+                market_data = serializer.to_representation(serializer.validated_data)
+                return Response(market_data, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# @extend_schema(tags=["IBKR"])
+# class RangeDataView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     serializer_class = UpperLowerBoundSerializer
+#
+#     def post(self, request):
+#         serializer = self.serializer_class(data=request.data)
+#         if serializer.is_valid():
+#             range_upper, range_lower = serializer.calculate_bounds()
+#             return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#
+#     def get(self, request):
+#         time_frame = request.query_params.get('time_frame')
+#         time_steps = request.query_params.get('time_steps')
+#         conid = request.query_params.get('conid')
+#
+#         if not all([time_frame, time_steps, conid]):
+#             return Response({'error': 'time_frame, time_steps, and conid are required parameters'},
+#                             status=status.HTTP_400_BAD_REQUEST)
+#
+#         data = {
+#             'time_frame': time_frame,
+#             'time_steps': time_steps,
+#             'conid': conid
+#         }
+#
+#         serializer = self.serializer_class(data=data)
+#         if serializer.is_valid():
+#             range_upper, range_lower = serializer.calculate_bounds()
+#             return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

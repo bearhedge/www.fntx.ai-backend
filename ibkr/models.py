@@ -1,6 +1,7 @@
 import requests
 from django.conf import settings
 from django.db import models
+from django.db.models import ForeignKey
 from django_celery_beat.models import PeriodicTask
 
 from accounts.models import CustomUser
@@ -18,22 +19,46 @@ class OnBoardingProcess(BaseModel):
     def __str__(self):
         return self.user.email
 
+class Instrument(BaseModel):
+    INSTRUMENT_TYPE_CHOICES = [
+        ('EQUITY', 'equity'),
+        ('COMMODITY', 'commodity'),
+        ('CRYPTO', 'crypto'),
+    ]
+    instrument = models.CharField(max_length=100)
+    instrument_type = models.CharField(max_length=100, choices=INSTRUMENT_TYPE_CHOICES)
+    conid = models.IntegerField()
+    exchange = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.instrument}"
+
 class SystemData(BaseModel):
     CONTRACT_TYPE_CHOICES = [
-        ('call', 'Call'),
+                ('call', 'Call'),
         ('put', 'Put'),
         ('both', 'Both'),
     ]
+    TIME_FRAME_CHOICES = [
+        ('1-day', '1d'),
+        ('4-hours', '4h'),
+        ('1-hour', '1h'),
+        ('30-min', '30min'),
+        ('15-min', '15min'),
+        ('5-min', '5min'),
+    ]
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    instrument = models.CharField(max_length=100)
-    analysis_time = models.IntegerField()
-    time_frame = models.CharField(max_length=100)
-    time_steps = models.IntegerField()
-    confidence_level = models.IntegerField()
-    contract_expiry = models.IntegerField()
-    contract_id = models.CharField(max_length=100)
-    no_of_contracts = models.IntegerField()
-    contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES)
+    instrument = ForeignKey(Instrument, on_delete=models.CASCADE, blank=True, null=True)
+    analysis_time = models.IntegerField(blank=True, null=True)
+    time_frame = models.CharField(max_length=100, choices=TIME_FRAME_CHOICES, blank=True, null=True)
+    time_steps = models.IntegerField(blank=True, null=True)
+    confidence_level = models.IntegerField(blank=True, null=True)
+    contract_expiry = models.IntegerField(blank=True, null=True)
+    contract_id = models.CharField(max_length=100, blank=True, null=True)
+    no_of_contracts = models.IntegerField(blank=True, null=True)
+    contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)
+    upper_bound = models.FloatField(blank=True, null=True)
+    lower_bound = models.FloatField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.email} - {self.instrument}"
@@ -74,18 +99,13 @@ class TradingStatus(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.status} - {self.wait_time} minutes"
 
-class Instrument(BaseModel):
-    INSTRUMENT_TYPE_CHOICES = [
-        ('EQUITY', 'equity'),
-        ('COMMODITY', 'commodity'),
-        ('CRYPTO', 'crypto'),
-    ]
-    instrument = models.CharField(max_length=100)
-    instrument_type = models.CharField(max_length=100, choices=INSTRUMENT_TYPE_CHOICES)
-    conid = models.IntegerField()
-    exchange = models.CharField(max_length=100)
+
+class TimerData(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    timer_value = models.IntegerField()
+    start_time = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.instrument}"
-
+        return f"{self.user.username} - {self.timer_value}"
 
