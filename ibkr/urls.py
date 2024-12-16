@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import InstrumentDetailView, MarketDataView, SymbolDataView, InstrumentListCreateView, AccountSummaryView, AuthStatusView, OnboardingView, Subscription, SystemDataView, OrderDataView
+from .views import InstrumentDetailView, RangeDataView, MarketDataView, SymbolDataView, InstrumentListCreateView, AccountSummaryView, AuthStatusView, OnboardingView, Subscription, SystemDataView, OrderDataView
 
 router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
@@ -16,6 +16,7 @@ urlpatterns = [
     path('instruments/<int:id>/', InstrumentDetailView.as_view(), name='instrument-detail'),
     path('symbol_conid',SymbolDataView.as_view(),name='symbol_conid'),
     path('market_data',MarketDataView.as_view(),name='market_data'),
+    path('range',RangeDataView.as_view(),name='Range'),
     path("", include(router.urls)),
 
 ]

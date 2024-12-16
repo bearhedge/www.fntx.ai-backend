@@ -121,12 +121,6 @@ class UpperLowerBoundSerializer(serializers.Serializer):
 
         return data
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        market_data = self.get_market_data(instance['conid'], instance['period'])
-        data['market_data'] = market_data
-        return data
-
     # def calculate_bounds(self):
     #     # Map time frame to number of days
     #     time_frame_mapping = {
@@ -140,9 +134,9 @@ class UpperLowerBoundSerializer(serializers.Serializer):
     #     time_frame_days = time_frame_mapping.get(self.validated_data['time_frame'], 0)
     #     num_days = int(self.validated_data['time_steps'] * time_frame_days)
     #
-    #     # Fetch historical prices
-    #     instrument = Instrument.objects.get(conid=self.validated_data['conid'])
-    #     prices = fetch_trailing_prices(instrument.instrument, num_days)
+    #     # # Fetch historical prices
+    #     # instrument = Instrument.objects.get(conid=self.validated_data['conid'])
+    #     prices = fetch_trailing_prices_from_json(response)
     #
     #     # Compute returns and statistics
     #     returns = compute_returns(prices)

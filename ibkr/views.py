@@ -253,6 +253,7 @@ class SymbolDataView(APIView):
     def get(self, request):
         symbol = request.query_params.get('symbol')
         if not symbol:
+            print(symbol,"====================")
             return Response({'error': 'Symbol parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
         url = f"https://localhost:5000/v1/api/trsrv/stocks?symbols={symbol}"
         try:
@@ -282,35 +283,37 @@ class MarketDataView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# @extend_schema(tags=["IBKR"])
-# class RangeDataView(APIView):
-#     permission_classes = [IsAuthenticated]
-#     serializer_class = UpperLowerBoundSerializer
-#
-#     def post(self, request):
-#         serializer = self.serializer_class(data=request.data)
-#         if serializer.is_valid():
-#             range_upper, range_lower = serializer.calculate_bounds()
-#             return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-#
-#     def get(self, request):
-#         time_frame = request.query_params.get('time_frame')
-#         time_steps = request.query_params.get('time_steps')
-#         conid = request.query_params.get('conid')
-#
-#         if not all([time_frame, time_steps, conid]):
-#             return Response({'error': 'time_frame, time_steps, and conid are required parameters'},
-#                             status=status.HTTP_400_BAD_REQUEST)
-#
-#         data = {
-#             'time_frame': time_frame,
-#             'time_steps': time_steps,
-#             'conid': conid
-#         }
-#
-#         serializer = self.serializer_class(data=data)
-#         if serializer.is_valid():
-#             range_upper, range_lower = serializer.calculate_bounds()
-#             return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+@extend_schema(tags=["IBKR"])
+class RangeDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UpperLowerBoundSerializer
+    http_method_names = ['get', 'post']
+
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            range_upper, range_lower = serializer.get_market_data()
+            return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        time_frame = request.query_params.get('time_frame')
+        time_steps = request.query_params.get('time_steps')
+        conid = request.query_params.get('conid')
+
+        if not all([time_frame, time_steps, conid]):
+            return Response({'error': 'time_frame, time_steps, and conid are required parameters'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        data = {
+            'time_frame': time_frame,
+            'time_steps': time_steps,
+            'conid': conid
+        }
+
+        serializer = self.serializer_class(data=data)
+        if serializer.is_valid():
+            range_upper, range_lower = serializer.get_market_data()
+            return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
