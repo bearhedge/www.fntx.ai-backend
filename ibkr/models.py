@@ -90,7 +90,7 @@ class OrderData(SystemData):
     def __str__(self):
         return f"{self.user.email} - {self.instrument}"
 
-class TradingStatus(models.Model):
+class TradingStatus(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     status = models.CharField(max_length=1, blank=True, null=True)
     wait_time = models.IntegerField()
