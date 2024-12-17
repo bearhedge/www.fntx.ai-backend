@@ -8,7 +8,7 @@ router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
 router.register("instruments", InstrumentListCreateView, "instruments")
 router.register("timer", TimerDataViewSet, "timer")
-
+router.register("range",RangeDataView,"range")
 
 urlpatterns = [
     path('auth-status/', AuthStatusView.as_view(), name='auth_status'),
@@ -17,7 +17,6 @@ urlpatterns = [
     path('order-data/', OrderDataView.as_view(), name='order-data'),
     path('symbol_conid',SymbolDataView.as_view(),name='symbol_conid'),
     path('market_data',MarketDataView.as_view(),name='market_data'),
-    path('range',RangeDataView.as_view(),name='Range'),
     path("", include(router.urls)),
 
 ]
