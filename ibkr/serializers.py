@@ -32,10 +32,17 @@ class InstrumentSerializer(serializers.ModelSerializer):
         model = Instrument
         fields = '__all__'
 
+
 class TimerDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimerData
-        fields = ['timer_value', 'start_time', 'is_active']
+        fields = ['timer_value', 'start_time']
+
+class TimerDataListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TimerData
+        fields = '__all__'
+
 
 
 class UpperLowerBoundSerializer(serializers.Serializer):

@@ -27,15 +27,14 @@ class Instrument(BaseModel):
     ]
     instrument = models.CharField(max_length=100)
     instrument_type = models.CharField(max_length=100, choices=INSTRUMENT_TYPE_CHOICES)
-    conid = models.IntegerField()
-    exchange = models.CharField(max_length=100)
+    instrument_data = models.JSONField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.instrument}"
 
 class SystemData(BaseModel):
     CONTRACT_TYPE_CHOICES = [
-                ('call', 'Call'),
+        ('call', 'Call'),
         ('put', 'Put'),
         ('both', 'Both'),
     ]
@@ -66,7 +65,7 @@ class SystemData(BaseModel):
     def get_available_margin(self):
         try:
             ibkr_base_url = settings.IBKR_BASE_URL
-            account_id = "U15796707"  # Replace with dynamic account ID if needed
+            account_id = "U15796707"
             response = requests.get(f"{ibkr_base_url}/portfolio/{account_id}/summary", verify=False)
             if response.status_code == 200:
                 account_summary = response.json()
@@ -100,11 +99,11 @@ class TradingStatus(models.Model):
         return f"{self.user.email} - {self.status} - {self.wait_time} minutes"
 
 
-class TimerData(models.Model):
+class TimerData(BaseModel):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
-    start_time = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=True)
+    start_time = models.TimeField()
+    place_order = models.BooleanField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.timer_value}"

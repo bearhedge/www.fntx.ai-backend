@@ -1,24 +1,29 @@
-from celery import shared_task
 import requests
+
+
+from celery import shared_task
 from django.conf import settings
 from django_celery_beat.models import PeriodicTask
 
+from core.celery_response import log_task_status
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TimerData
 
 
 @shared_task
-def tickle_ibkr_session(data=None):
+def tickle_ibkr_session(self, data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
     """
+    task_name = "tickle_ibkr_session"
     onboarding_id = data.get('onboarding_id')
     user_id = data.get('user_id')
     task_id = data.get('task_id')
 
     onboarding_obj = OnBoardingProcess.objects.filter(id=onboarding_id, user_id=user_id).first()
     if not onboarding_obj:
-        return {"error": "Onboarding instance not found."}
+        log_task_status(task_name, message="Onboarding instance not found.", additional_data={"onboarding_id": onboarding_id})
+
 
     ibkr = IBKRBase()
     response = ibkr.auth_status()
@@ -31,17 +36,32 @@ def tickle_ibkr_session(data=None):
     try:
         tickle_response = requests.post(tickle_url, verify=False)
         if tickle_response.status_code != 200:
-            return _disable_task_and_update_status(onboarding_obj, task_id)
+            return _disable_task_and_update_status(onboarding_obj, task_id, task_name)
     except requests.exceptions.RequestException as e:
-        return {"error": "Error hitting IBKR tickle endpoint.", "details": str(e)}
+        error_details = log_task_status(task_name, exception=e, additional_data={"payload": data})
+        self.update_state(state="FAILURE", meta=error_details)
+        raise
 
-    return {
-        "message": "Task run successfully",
-        "status_code": tickle_response.status_code,
-    }
+@shared_task
+def update_timer(self, timer_id):
+    task_name = "update_timer"
+    try:
+        # Perform the task logic
+        timer = TimerData.objects.get(id=timer_id)
+        if timer.timer_value > 0:
+            timer.timer_value -= 1
+            timer.save()
+            log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
+        else:
+            timer.place_order = False
+            timer.save()
+            log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
+    except Exception as e:
+        error_details = log_task_status(task_name, exception=e, additional_data={"timer_id": timer_id})
+        self.update_state(state="FAILURE", meta=error_details)
+        raise
 
-
-def _disable_task_and_update_status(onboarding_obj, task_id):
+def _disable_task_and_update_status(onboarding_obj, task_id, task_name):
     """
     Helper function to disable a task and update onboarding status.
     """
@@ -53,13 +73,4 @@ def _disable_task_and_update_status(onboarding_obj, task_id):
         task.enabled = False
         task.save()
 
-    return {"message": "Authentication failed. Task disabled."}
-
-@shared_task
-def deactivate_timer(user_id):
-    try:
-        timer_data = TimerData.objects.get(user_id=user_id, is_active=True)
-        timer_data.is_active = False
-        timer_data.save()
-    except TimerData.DoesNotExist:
-        pass
+    return log_task_status(task_name, message="Authentication failed. Task disabled.", additional_data={"timer_id": task_id})

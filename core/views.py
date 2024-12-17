@@ -32,12 +32,12 @@ class IBKRBase:
 
 
     # Instantiate the Option Chain
-    def get_spy_conId(self):
+    def get_spy_conId(self, symbol):
         """
         Fetch the data for a particular symbol
         """
         try:
-            response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/search?symbol=SPX", verify=False)
+            response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/search?symbol={symbol}", verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
