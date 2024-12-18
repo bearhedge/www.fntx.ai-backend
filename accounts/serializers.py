@@ -1,12 +1,14 @@
 import re
 from django.contrib.auth.hashers import make_password
+from django_celery_beat.models import PeriodicTask, IntervalSchedule
+from django.utils.translation import gettext_lazy as _lazy
+
+
 from rest_framework import serializers
-from rest_framework.validators import UniqueTogetherValidator
-
-from accounts.models import *
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from django.utils.translation import gettext_lazy as _
 
+
+from accounts.models import CustomUser
 from ibkr.models import OnBoardingProcess
 
 
@@ -83,28 +85,53 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Ensure email and password are provided
         if not email or not password:
             raise serializers.ValidationError(
-                {"error": _('Must include "email" and "password".')}
+                {"error": _lazy('Must include "email" and "password".')}
             )
 
         try:
             user = CustomUser.objects.get(email__icontains=email, is_active=True, is_superuser=False)
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError(
-                {"error": _("Account with this email does not exist.")}
+                {"error": _lazy("Account with this email does not exist.")}
             )
 
         if not user.is_active:
             raise serializers.ValidationError(
-                {"error": _("This account is inactive.")}
+                {"error": _lazy("This account is inactive.")}
             )
 
         if not user.check_password(password):
             raise serializers.ValidationError(
-                {"error": _("Incorrect password. Please try again.")}
+                {"error": _lazy("Incorrect password. Please try again.")}
             )
 
         refresh = self.get_token(user)
-        onboarding_process = OnBoardingProcess.objects.filter(user=user).first()
+
+        # Check or create onboarding process entry
+        onboarding_process, created = OnBoardingProcess.objects.get_or_create(user=user)
+
+        # Create periodic task
+        task_name = f"tickle_ibkr_session_user_{user.id}"
+        if not PeriodicTask.objects.filter(name=task_name).exists():
+            interval_schedule, _ = IntervalSchedule.objects.get_or_create(
+                every=2, period=IntervalSchedule.MINUTES
+            )
+
+            periodic_task = PeriodicTask.objects.create(
+                interval=interval_schedule,
+                name=task_name,
+                task="tickle_ibkr_session",
+                enabled=False
+            )
+
+            # save the args of the task
+            args = {"user_id": user.id, "task_id": periodic_task.id, "onboarding_id": onboarding_process.id,}
+            periodic_task.args = args
+            periodic_task.save()
+
+            # Link periodic task to the onboarding process
+            onboarding_process.periodic_task = periodic_task
+            onboarding_process.save()
 
         data = {"refresh": str(refresh), "access": str(refresh.access_token), "user": {
             "username": user.username,
