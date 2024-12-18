@@ -1,4 +1,6 @@
 import time
+
+import numpy as np
 import pandas as pd
 
 
@@ -25,8 +27,3 @@ def compute_expected_range(latest_price, daily_volatility):
     range_lower = latest_price * (1 - daily_volatility)
     return range_upper, range_lower
 
-# conid = "123456"
-# period = "2d"
-# bar = "1h"
-# exchange = "NYSE"
-# outside_rth = True

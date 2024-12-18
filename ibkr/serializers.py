@@ -46,12 +46,12 @@ class TimerDataListSerializer(serializers.ModelSerializer):
 
 
 class UpperLowerBoundSerializer(serializers.Serializer):
-    time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)  # Validates against predefined choices
-    time_steps = serializers.IntegerField()  # Positive integer for time steps
-    conid = serializers.IntegerField()  # Integer representing contract ID
+    time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)
+    time_steps = serializers.IntegerField()
+    conid = serializers.IntegerField()
 
     def validate(self, data):
-        time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)  # Map time frame choices to units
+        time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)
         time_frame = data.get('time_frame')
         time_steps = data.get('time_steps')
 

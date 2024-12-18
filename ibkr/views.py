@@ -255,12 +255,10 @@ class SymbolDataView(APIView, IBKRBase):
             )
 
 
-
-
 @extend_schema(tags=["IBKR"])
-class MarketDataView(APIView):
-    permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access this endpoint
-    serializer_class = UpperLowerBoundSerializer  # Associate the serializer with this view
+class ContractsView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UpperLowerBoundSerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
