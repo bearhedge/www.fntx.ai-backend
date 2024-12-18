@@ -3,7 +3,6 @@ from django.conf import settings
 from django.db import models
 from django.db.models import ForeignKey
 from django_celery_beat.models import PeriodicTask
-
 from accounts.models import CustomUser
 from core.models import BaseModel
 
@@ -108,3 +107,38 @@ class TimerData(BaseModel):
     def __str__(self):
         return f"{self.user.username} - {self.timer_value}"
 
+
+class PlaceOrder(BaseModel):
+    ORDER_TYPE_CHOICES =[
+        ('LMT', 'LMT'),
+        ('MKT', 'MKT'),
+    ]
+    SIDE_CHOICES = [
+        ('BUY', 'BUY'),
+        ('SELL', 'SELL'),
+    ]
+    TIF_CHOICES = [
+        ('DAY', 'DAY'), #Day
+        ('GTC', 'GTC'), #Good-Til-Canceled
+        ('OPG', 'OPG'), #market-on-open
+        ('IOC', 'IOC'), #Immediate-or-Cancel
+        ('GTD', 'GTD'), #Good-Til-Date
+        ('FOK', 'FOK'), #Fill-or-Kill
+        ('DTC', 'DTC'), #Day Til Cancelled
+    ]
+
+    user = models.ForeignKey(CustomUser, on_delete= models.CASCADE)
+    accountId = models.CharField(max_length=100)
+    conid = models.IntegerField()
+    orderType = models.CharField(max_length=4, choices=ORDER_TYPE_CHOICES)
+    price = models.IntegerField(blank=True, null=True)
+    side = models.CharField(max_length=4, choices=SIDE_CHOICES)
+    tif = models.CharField(max_length=4, choices=TIF_CHOICES)
+    quantity = models.IntegerField()
+    exp_date = models.CharField(max_length=8, blank=True, null=True)  # Format: YYYYMMDD
+    exp_time = models.CharField(max_length=8, blank=True, null=True)  # Format: HH:MM(:SS)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.conid} - {self.quantity}"
+
+#DUA785929

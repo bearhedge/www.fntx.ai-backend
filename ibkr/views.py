@@ -12,6 +12,10 @@ from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from core.views import IBKRBase
+from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData
+from ibkr.serializers import (UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer,\
+    OrderDataSerializer, TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, HistoryDataSerializer,\
+    PlaceOrderSerializer)
 from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
     OrderDataSerializer, TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
@@ -345,6 +349,49 @@ class RangeDataView(APIView, IBKRBase):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
+            conid = serializer.validated_data['conid']
+            period = serializer.validated_data['period']
+            bound_data = serializer.get_market_data(conid,period)
+            return Response(bound_data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=["IBKR"])
+class GetHistoryDataView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = HistoryDataSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            conid = serializer.validated_data['conid']
+            period = serializer.validated_data['period']
+            history_data = serializer.get_market_data(conid, period)
+            return Response(history_data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=["IBKR"])
+class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
+    permission_classes = [IsAuthenticated]
+    serializer_class = PlaceOrderSerializer
+    http_method_names = ['post']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        IBKRBase.__init__(self)
+
+    def create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        order_data = serializer.validated_data
+        print(order_data)
+        response = self.placeOrder(order_data)
+        if response['success']:
+            return Response(response['data'], status=status.HTTP_201_CREATED)
+        else:
+            return Response(response, status=response.get('status', status.HTTP_400_BAD_REQUEST))
             validated_data = serializer.validated_data
             conid = validated_data['conid']
             period = validated_data['period']
