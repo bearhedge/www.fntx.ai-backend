@@ -1,3 +1,5 @@
+from datetime import timedelta, datetime
+
 import requests
 
 
@@ -10,7 +12,7 @@ from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TimerData
 
 
-@shared_task
+@shared_task(bind=True)
 def tickle_ibkr_session(self, data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
@@ -42,7 +44,7 @@ def tickle_ibkr_session(self, data=None):
         self.update_state(state="FAILURE", meta=error_details)
         raise
 
-@shared_task
+@shared_task(bind=True)
 def update_timer(self, timer_id):
     task_name = "update_timer"
     try:
@@ -50,12 +52,20 @@ def update_timer(self, timer_id):
         timer = TimerData.objects.get(id=timer_id)
         if timer.timer_value > 0:
             timer.timer_value -= 1
+
+            # increase time by 1 minute
+            timer_start_time = timer.start_time
+            current_datetime = datetime.combine(datetime.today(), timer_start_time)
+            updated_datetime = current_datetime + timedelta(minutes=1)
+            timer.start_time = updated_datetime.time()
             timer.save()
-            log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
+            success_details = log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
         else:
             timer.place_order = False
             timer.save()
-            log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
+            success_details = log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
+        self.update_state(state="SUCCESS", meta=success_details)
+
     except Exception as e:
         error_details = log_task_status(task_name, exception=e, additional_data={"timer_id": timer_id})
         self.update_state(state="FAILURE", meta=error_details)

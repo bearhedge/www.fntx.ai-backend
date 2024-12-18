@@ -133,7 +133,7 @@ class SystemDataView(viewsets.ModelViewSet):
     queryset = SystemData.objects.all()
 
     def get_serializer_class(self):
-        if self.action in ['create', 'update']:
+        if self.action in ['create', 'update', 'partial_update']:
             return self.serializer_class
         return self.serializer_list_class
 
@@ -147,9 +147,10 @@ class SystemDataView(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        data["user"] = request.user
-        serializer = self.get_serializer(data=request.data)
+        data["user"] = request.user.id
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -239,12 +240,11 @@ class TimerDataViewSet(viewsets.ModelViewSet):
                 every=1,
                 period=IntervalSchedule.MINUTES
             )
-
             PeriodicTask.objects.create(
                 interval=schedule,
                 name=f"Update Timer for {timer.id}",
-                task="update_timer",
-                args=json.dumps([timer.id]),
+                task="ibkr.tasks.update_timer",
+                args=json.dumps([str(timer.id)]),
             )
 
             return Response(serializer.data, status=201)

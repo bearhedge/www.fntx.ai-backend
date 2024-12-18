@@ -13,18 +13,6 @@ class OnboardingSerailizer(serializers.ModelSerializer):
         exclude = ('periodic_task',)
         depth = 1
 
-class SystemDataSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SystemData
-        exclude = ('user', )
-
-
-class SystemDataListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SystemData
-        exclude = ('user', )
-        depth = 1
-
 
 class OrderDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -52,6 +40,24 @@ class TimerDataListSerializer(serializers.ModelSerializer):
         model = TimerData
         fields = '__all__'
 
+
+class SystemDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemData
+        fields = "__all__"
+
+class SystemDataListSerializer(serializers.ModelSerializer):
+    timer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SystemData
+        exclude = ('user', )
+        depth = 1
+
+    def get_timer(self, obj):
+        timer_instace = TimerData.objects.filter(user=obj.user).first()
+        serailized_data = TimerDataListSerializer(timer_instace).data
+        return serailized_data
 
 class UpperLowerBoundSerializer(serializers.Serializer):
     time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)  # Validates against predefined choices
