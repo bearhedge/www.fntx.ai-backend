@@ -129,7 +129,7 @@ class SystemDataView(viewsets.ModelViewSet):
     queryset = SystemData.objects.all()
 
     def get_serializer_class(self):
-        if self.action in ['create', 'patch', 'put']:
+        if self.action in ['create', 'update']:
             return self.serializer_class
         return self.serializer_list_class
 
