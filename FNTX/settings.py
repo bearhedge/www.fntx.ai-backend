@@ -178,32 +178,32 @@ REST_FRAMEWORK = {
     ),
 }
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-        }
-    },
-    'loggers':{
-            'django': {
-                'handlers':['console'],
-                'propagate': True,
-                'level':'DEBUG',
-            },
-            'django.request': {
-                'handlers':['console'],
-                'propagate': False,
-                'level':'DEBUG',
-            },
-            '': {
-                'handlers': ['console'],
-                'level': 'DEBUG',
-            },
-    },
-}
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False,
+#     'handlers': {
+#         'console': {
+#             'level': 'DEBUG',
+#             'class': 'logging.StreamHandler',
+#         }
+#     },
+#     'loggers':{
+#             'django': {
+#                 'handlers':['console'],
+#                 'propagate': True,
+#                 'level':'DEBUG',
+#             },
+#             'django.request': {
+#                 'handlers':['console'],
+#                 'propagate': False,
+#                 'level':'DEBUG',
+#             },
+#             '': {
+#                 'handlers': ['console'],
+#                 'level': 'DEBUG',
+#             },
+#     },
+# }
 
 
 SPECTACULAR_SETTINGS = {

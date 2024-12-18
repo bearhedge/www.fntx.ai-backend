@@ -1,6 +1,5 @@
 import requests
 from django.conf import settings
-from requests import session
 from rest_framework import serializers
 from ibkr.utils import fetch_bounds_from_json
 from ibkr.models import TimerData, OnBoardingProcess, SystemData, OrderData, TradingStatus ,Instrument, PlaceOrder
@@ -9,7 +8,6 @@ import re
 
 
 class OnboardingSerailizer(serializers.ModelSerializer):
-
     class Meta:
         model = OnBoardingProcess
         exclude = ('periodic_task',)
@@ -18,7 +16,15 @@ class OnboardingSerailizer(serializers.ModelSerializer):
 class SystemDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemData
-        fields = '__all__'
+        exclude = ('user', )
+
+
+class SystemDataListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemData
+        exclude = ('user', )
+        depth = 1
+
 
 class OrderDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -47,18 +53,13 @@ class TimerDataListSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-
-class UpperLowerBoundSerializer(serializers.Serializer, IBKRBase):
+class UpperLowerBoundSerializer(serializers.Serializer):
     time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)  # Validates against predefined choices
     time_steps = serializers.IntegerField()  # Positive integer for time steps
     conid = serializers.IntegerField()  # Integer representing contract ID
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        IBKRBase.__init__(self)
-
     def validate(self, data):
-        time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)  # Map time frame choices to units
+        time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)
         time_frame = data.get('time_frame')
         time_steps = data.get('time_steps')
         if time_frame not in time_frame_mapping:
