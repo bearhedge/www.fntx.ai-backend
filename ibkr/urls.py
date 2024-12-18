@@ -2,13 +2,15 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import RangeDataView, MarketDataView, SymbolDataView, InstrumentListCreateView, AccountSummaryView, \
-    AuthStatusView, OnboardingView, SystemDataView, OrderDataView, TimerDataViewSet
+    AuthStatusView, OnboardingView, SystemDataView, OrderDataView, TimerDataViewSet, GetHistoryDataView, PlaceOrderView
 
 router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
 router.register("instruments", InstrumentListCreateView, "instruments")
 router.register("timer", TimerDataViewSet, "timer")
 router.register("range",RangeDataView,"range")
+router.register("place-order",PlaceOrderView,"place-order")
+
 
 urlpatterns = [
     path('auth-status/', AuthStatusView.as_view(), name='auth_status'),
@@ -17,6 +19,7 @@ urlpatterns = [
     path('order-data/', OrderDataView.as_view(), name='order-data'),
     path('symbol_conid',SymbolDataView.as_view(),name='symbol_conid'),
     path('market_data',MarketDataView.as_view(),name='market_data'),
+    path('history_data',GetHistoryDataView.as_view(), name='history_data'),
     path("", include(router.urls)),
 
 ]

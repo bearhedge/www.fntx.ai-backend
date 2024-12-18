@@ -53,5 +53,16 @@ class IBKRBase:
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
+    def placeOrder(self, order_data):
+        try:
+            url = f"{self.ibkr_base_url}/iserver/account/{order_data['accountId']}/orders"
+            response = requests.post(url, json=[order_data], verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
 
 

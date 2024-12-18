@@ -3,7 +3,7 @@ from django.conf import settings
 from requests import session
 from rest_framework import serializers
 from ibkr.utils import fetch_bounds_from_json
-from ibkr.models import TimerData, OnBoardingProcess, SystemData, OrderData, TradingStatus ,Instrument
+from ibkr.models import TimerData, OnBoardingProcess, SystemData, OrderData, TradingStatus ,Instrument, PlaceOrder
 from core.views import IBKRBase
 import re
 
@@ -123,3 +123,66 @@ class UpperLowerBoundSerializer(serializers.Serializer, IBKRBase):
         except serializers.ValidationError as e:
             data['market_data_error'] = str(e)
         return data
+
+class HistoryDataSerializer(serializers.Serializer, IBKRBase):
+    period = serializers.CharField()  # Positive integer for time steps
+    conid = serializers.IntegerField()  # Integer representing contract ID
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
+
+    def validate(self, data):
+        data['period'] = f"{data.get('period')}"
+        data['conid'] = data.get('conid')
+        return data
+
+    def get_market_data(self, conid, period):
+        base_url = settings.IBKR_BASE_URL + "/iserver/marketdata/history"
+
+        try:
+            data = self.tickle()
+            session_token = data['data']['session']
+        except (KeyError, ValueError):
+            raise serializers.ValidationError("Invalid response from tickle API.")
+
+        params = {
+            'conid': conid,
+            'period': period,
+            'session': session_token
+        }
+        response = requests.get(base_url, params=params, verify=False)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 429:
+            raise serializers.ValidationError("Too many requests. Please try again later.")
+        else:
+            try:
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise serializers.ValidationError(f"Market data API error: {str(e)}")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        conid = instance.get('conid')
+        period = instance.get('period')
+
+        try:
+            market_data = self.get_market_data(conid, period)
+            data['market_data'] = market_data
+        except serializers.ValidationError as e:
+            data['market_data_error'] = str(e)
+        return data
+
+class PlaceOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceOrder
+        fields = ['accountId', 'conid', 'orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', 'exp_time']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+
+
