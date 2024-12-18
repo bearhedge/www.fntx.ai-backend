@@ -8,7 +8,7 @@ router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
 router.register("instruments", InstrumentListCreateView, "instruments")
 router.register("timer", TimerDataViewSet, "timer")
-
+router.register("range",RangeDataView,"range")
 
 urlpatterns = [
     path('auth-status/', AuthStatusView.as_view(), name='auth_status'),

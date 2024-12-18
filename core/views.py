@@ -30,8 +30,6 @@ class IBKRBase:
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
-
-    # Instantiate the Option Chain
     def get_spy_conId(self, symbol):
         """
         Fetch the data for a particular symbol
@@ -44,5 +42,16 @@ class IBKRBase:
                 return {"success": False, "status": response.status_code}
         except Exception as e:
             return {"success": False, "error": str(e), "status": 500}
+
+    def tickle(self):
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/tickle", verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
 
 

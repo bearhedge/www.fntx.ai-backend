@@ -235,6 +235,11 @@ class TimerDataViewSet(viewsets.ModelViewSet):
                parameters=[OpenApiParameter(name="symbol", description="Stock symbol", required=True, type=str)])
 class SymbolDataView(APIView, IBKRBase):
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get']
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
 
     def get(self, request):
         try:
@@ -272,36 +277,16 @@ class ContractsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @extend_schema(tags=["IBKR"])
-class RangeDataView(APIView):
+class RangeDataView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = UpperLowerBoundSerializer
-    http_method_names = ['get', 'post']
+    http_method_names = ['post']
 
-
-    def post(self, request):
+    def create(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            range_upper, range_lower = serializer.get_market_data()
-            return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def get(self, request):
-        time_frame = request.query_params.get('time_frame')
-        time_steps = request.query_params.get('time_steps')
-        conid = request.query_params.get('conid')
-
-        if not all([time_frame, time_steps, conid]):
-            return Response({'error': 'time_frame, time_steps, and conid are required parameters'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        data = {
-            'time_frame': time_frame,
-            'time_steps': time_steps,
-            'conid': conid
-        }
-
-        serializer = self.serializer_class(data=data)
-        if serializer.is_valid():
-            range_upper, range_lower = serializer.get_market_data()
-            return Response({'upper_bound': range_upper, 'lower_bound': range_lower}, status=status.HTTP_200_OK)
+            conid = serializer.validated_data['conid']
+            period = serializer.validated_data['period']
+            bound_data = serializer.get_market_data(conid,period)
+            return Response(bound_data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
