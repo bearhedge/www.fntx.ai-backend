@@ -45,7 +45,7 @@ class IBKRBase:
 
     def tickle(self):
         try:
-            response = requests.get(f"{self.ibkr_base_url}/tickle", verify=False)
+            response = requests.post(f"{self.ibkr_base_url}/tickle", verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
