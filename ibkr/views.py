@@ -10,16 +10,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
-from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData
-from ibkr.serializers import (UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer,\
-    OrderDataSerializer, TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, HistoryDataSerializer,\
-    PlaceOrderSerializer)
 from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
-    OrderDataSerializer, TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
-    SystemDataListSerializer
+     TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
+    SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer
 from ibkr.utils import fetch_bounds_from_json
 
 
@@ -151,20 +146,6 @@ class SystemDataView(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-@extend_schema(tags=["IBKR"])
-class OrderDataView(APIView):
-    permission_classes = [IsAuthenticated]
-    http_method_names = ['post']
-    serializer_class = OrderDataSerializer
-
-    def post(self, request):
-        serializer = OrderDataSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @extend_schema(tags=["IBKR"])
 class TradingStatusView(APIView):

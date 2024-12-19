@@ -81,15 +81,6 @@ class SystemData(BaseModel):
         order_amount = available_margin * (self.confidence_level / 100)
         return order_amount
 
-class OrderData(SystemData):
-    limit_sell = models.FloatField()
-    limit_buy = models.FloatField()
-    stop_loss = models.FloatField()
-    take_profit = models.FloatField()
-
-    def __str__(self):
-        return f"{self.user.email} - {self.instrument}"
-
 class TradingStatus(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     status = models.CharField(max_length=1, blank=True, null=True)
@@ -137,6 +128,11 @@ class PlaceOrder(BaseModel):
     quantity = models.IntegerField()
     exp_date = models.CharField(max_length=8, blank=True, null=True)  # Format: YYYYMMDD
     exp_time = models.CharField(max_length=8, blank=True, null=True)  # Format: HH:MM(:SS)
+
+    limit_sell = models.FloatField(blank=True, null=True)
+    limit_buy = models.FloatField(blank=True, null=True)
+    stop_loss = models.FloatField(blank=True, null=True)
+    take_profit = models.FloatField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"

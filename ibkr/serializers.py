@@ -2,7 +2,7 @@ import requests
 from django.conf import settings
 from rest_framework import serializers
 from ibkr.utils import fetch_bounds_from_json
-from ibkr.models import TimerData, OnBoardingProcess, SystemData, OrderData, TradingStatus ,Instrument, PlaceOrder
+from ibkr.models import TimerData, OnBoardingProcess, SystemData, TradingStatus ,Instrument, PlaceOrder
 from core.views import IBKRBase
 import re
 
@@ -24,12 +24,6 @@ class SystemDataListSerializer(serializers.ModelSerializer):
         model = SystemData
         exclude = ('user', )
         depth = 1
-
-
-class OrderDataSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OrderData
-        fields = '__all__'
 
 class TradingStatusSerializer(serializers.ModelSerializer):
     class Meta:
