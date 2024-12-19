@@ -40,9 +40,9 @@ class SystemData(BaseModel):
         ('1-day', '1d'),
         ('4-hours', '4h'),
         ('1-hour', '1h'),
-        ('30-min', '30min'),
-        ('15-min', '15min'),
-        ('5-min', '5min'),
+        ('30-mins', '30min'),
+        ('15-mins', '15min'),
+        ('5-mins', '5min'),
     ]
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     instrument = models.ForeignKey(Instrument, on_delete=models.CASCADE, blank=True, null=True)
@@ -113,12 +113,12 @@ class PlaceOrder(BaseModel):
     accountId = models.CharField(max_length=100)
     conid = models.IntegerField()
     orderType = models.CharField(max_length=4, choices=ORDER_TYPE_CHOICES)
-    price = models.IntegerField(blank=True, null=True)
+    price = models.FloatField(blank=True, null=True)
     side = models.CharField(max_length=4, choices=SIDE_CHOICES)
     tif = models.CharField(max_length=4, choices=TIF_CHOICES)
     quantity = models.IntegerField()
-    exp_date = models.CharField(max_length=8, blank=True, null=True)  # Format: YYYYMMDD
-    exp_time = models.CharField(max_length=8, blank=True, null=True)  # Format: HH:MM(:SS)
+    exp_date = models.CharField(max_length=8, blank=True, null=True)
+    exp_time = models.CharField(max_length=8, blank=True, null=True)
 
     limit_sell = models.FloatField(blank=True, null=True)
     limit_buy = models.FloatField(blank=True, null=True)

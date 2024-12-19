@@ -152,7 +152,7 @@ class HistoryDataSerializer(serializers.Serializer, IBKRBase):
 class PlaceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceOrder
-        fields = ['accountId', 'conid', 'orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', 'exp_time']
+        fields = ['orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', '~']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
