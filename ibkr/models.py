@@ -61,33 +61,14 @@ class SystemData(BaseModel):
     def __str__(self):
         return f"{self.user.email} - {self.instrument}"
 
-    def get_available_margin(self):
-        try:
-            ibkr_base_url = settings.IBKR_BASE_URL
-            account_id = "U15796707"
-            response = requests.get(f"{ibkr_base_url}/portfolio/{account_id}/summary", verify=False)
-            if response.status_code == 200:
-                account_summary = response.json()
-                available_margin = account_summary.get('available_margin', 0)
-                return available_margin
-            else:
-                return 0
-        except Exception as e:
-            return 0
+    @property
+    def contract_leg_type(self):
+        if self.contract_type == 'both':
+            return 'DOUBLE LEG'
+        elif not self.contract_type:
+            return None
+        return 'SINGLE LEG'
 
-    def calculate_order_amount(self):
-        available_margin = self.get_available_margin()
-        order_amount = available_margin * (self.confidence_level / 100)
-        return order_amount
-
-class OrderData(SystemData):
-    limit_sell = models.FloatField()
-    limit_buy = models.FloatField()
-    stop_loss = models.FloatField()
-    take_profit = models.FloatField()
-
-    def __str__(self):
-        return f"{self.user.email} - {self.instrument}"
 
 class TradingStatus(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
@@ -101,6 +82,7 @@ class TradingStatus(BaseModel):
 class TimerData(BaseModel):
     user= models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
+    original_timer_value = models.IntegerField()
     start_time = models.TimeField()
     place_order = models.BooleanField(blank=True, null=True)
 
@@ -137,6 +119,11 @@ class PlaceOrder(BaseModel):
     quantity = models.IntegerField()
     exp_date = models.CharField(max_length=8, blank=True, null=True)  # Format: YYYYMMDD
     exp_time = models.CharField(max_length=8, blank=True, null=True)  # Format: HH:MM(:SS)
+
+    limit_sell = models.FloatField(blank=True, null=True)
+    limit_buy = models.FloatField(blank=True, null=True)
+    stop_loss = models.FloatField(blank=True, null=True)
+    take_profit = models.FloatField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"

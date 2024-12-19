@@ -2,7 +2,7 @@ import requests
 from django.conf import settings
 from rest_framework import serializers
 from ibkr.utils import fetch_bounds_from_json
-from ibkr.models import TimerData, OnBoardingProcess, SystemData, OrderData, TradingStatus ,Instrument, PlaceOrder
+from ibkr.models import TimerData, OnBoardingProcess, SystemData, TradingStatus ,Instrument, PlaceOrder
 from core.views import IBKRBase
 import re
 
@@ -13,11 +13,17 @@ class OnboardingSerailizer(serializers.ModelSerializer):
         exclude = ('periodic_task',)
         depth = 1
 
-
-class OrderDataSerializer(serializers.ModelSerializer):
+class SystemDataSerializer(serializers.ModelSerializer):
     class Meta:
-        model = OrderData
-        fields = '__all__'
+        model = SystemData
+        exclude = ('user', )
+
+
+class SystemDataListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemData
+        exclude = ('user', )
+        depth = 1
 
 class TradingStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -33,7 +39,8 @@ class InstrumentSerializer(serializers.ModelSerializer):
 class TimerDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimerData
-        fields = ['timer_value', 'start_time']
+        fields = ['timer_value', 'start_time', 'original_timer_value']
+
 
 class TimerDataListSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,6 +55,8 @@ class SystemDataSerializer(serializers.ModelSerializer):
 
 class SystemDataListSerializer(serializers.ModelSerializer):
     timer = serializers.SerializerMethodField()
+    contract_leg_type = serializers.SerializerMethodField()
+
 
     class Meta:
         model = SystemData
@@ -59,10 +68,13 @@ class SystemDataListSerializer(serializers.ModelSerializer):
         serailized_data = TimerDataListSerializer(timer_instace).data
         return serailized_data
 
+    def get_contract_leg_type(self, obj):
+        return obj.contract_leg_type
+
+
 class UpperLowerBoundSerializer(serializers.Serializer):
     time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)  # Validates against predefined choices
     time_steps = serializers.IntegerField()  # Positive integer for time steps
-    conid = serializers.IntegerField()  # Integer representing contract ID
 
     def validate(self, data):
         time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)
@@ -83,53 +95,9 @@ class UpperLowerBoundSerializer(serializers.Serializer):
         unit_part = match.group(2)
 
         data['period'] = f"{time_steps * numerical_part}{unit_part}"
-        data['conid'] = f"{data.get('conid')}"
         return data
 
-    def get_market_data(self, conid, period):
-        base_url = settings.IBKR_BASE_URL + "/iserver/marketdata/history"
 
-        try:
-            data = self.tickle()
-            session_token = data['data']['session']
-        except (KeyError, ValueError):
-            raise serializers.ValidationError("Invalid response from tickle API.")
-
-        params = {
-            'conid': conid,
-            'period': period,
-            'session': session_token
-        }
-        response = requests.get(base_url, params=params, verify=False)
-        if response.status_code == 200:
-            # prices = fetch_trailing_prices_from_json(response.json)
-            # print(prices,"------------")
-            # returns = compute_returns(prices)
-            # mean_return, std_dev_return = calculate_statistics(returns)
-            # latest_price = prices.iloc[-1]
-
-            data = fetch_bounds_from_json(response.json())
-
-            return data
-        elif response.status_code == 429:
-            raise serializers.ValidationError("Too many requests. Please try again later.")
-        else:
-            try:
-                response.raise_for_status()
-            except requests.exceptions.RequestException as e:
-                raise serializers.ValidationError(f"Market data API error: {str(e)}")
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        conid = instance.get('conid')
-        period = instance.get('period')
-
-        try:
-            market_data = self.get_market_data(conid, period)
-            data['market_data'] = market_data
-        except serializers.ValidationError as e:
-            data['market_data_error'] = str(e)
-        return data
 
 class HistoryDataSerializer(serializers.Serializer, IBKRBase):
     period = serializers.CharField()  # Positive integer for time steps
