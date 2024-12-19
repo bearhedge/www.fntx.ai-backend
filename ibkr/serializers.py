@@ -1,6 +1,8 @@
 import requests
 from django.conf import settings
 from rest_framework import serializers
+from rest_framework.views import APIView
+
 from ibkr.utils import fetch_bounds_from_json
 from ibkr.models import TimerData, OnBoardingProcess, SystemData, TradingStatus ,Instrument, PlaceOrder
 from core.views import IBKRBase
@@ -152,12 +154,9 @@ class HistoryDataSerializer(serializers.Serializer, IBKRBase):
 class PlaceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceOrder
-        fields = ['orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', '~']
+        fields = ['orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', 'exp_time']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
-
-
-
 

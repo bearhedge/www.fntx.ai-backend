@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import RangeDataView, SymbolDataView, InstrumentListCreateView, AccountSummaryView, \
-    AuthStatusView, OnboardingView, SystemDataView, TimerDataViewSet, GetHistoryDataView, PlaceOrderView
+    AuthStatusView, OnboardingView, SystemDataView, TimerDataViewSet, GetHistoryDataView, PlaceOrderView, IBKRTokenView
 
 router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
@@ -17,6 +17,7 @@ urlpatterns = [
     path('history_data',GetHistoryDataView.as_view(), name='history_data'),
     # path('contracts',ContractsView.as_view(),name='contracts'),
     path('range',RangeDataView.as_view(),name='Range'),
+    path('get-token', IBKRTokenView.as_view(), name="token"),
     path("", include(router.urls)),
 
 ]

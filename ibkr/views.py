@@ -394,3 +394,19 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
         else:
             return Response(response, status=response.get('status', status.HTTP_400_BAD_REQUEST))
 
+
+@extend_schema(tags=["IBKR"])
+class IBKRTokenView(APIView, IBKRBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
+
+    def post(self, request):
+        try:
+            data = self.tickle()
+            session_token = data['data']['session']
+        except (KeyError, ValueError):
+            raise IBKRAPIError("Failed to retrieve session token from Tickle API response.")
+
+        return Response(session_token, status=status.HTTP_400_BAD_REQUEST)
+
