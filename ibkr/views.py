@@ -338,17 +338,21 @@ class RangeDataView(APIView, IBKRBase):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            conid = serializer.validated_data['conid']
-            period = serializer.validated_data['period']
-            try:
-                bound_data = self.get_market_data(conid, period)
+            system_data_obj = SystemData.objects.filter(user=request.user).first()
+            if system_data_obj:
+                conid = system_data_obj.ticker_data.get('conid')
+                period = serializer.validated_data['period']
+                try:
+                    bound_data = self.get_market_data(conid, period)
+                    return Response(bound_data, status=status.HTTP_200_OK)
+                except IBKRAPIError as e:
+                    return Response(
+                        {"error": str(e)},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
                 return Response(bound_data, status=status.HTTP_200_OK)
-            except IBKRAPIError as e:
-                return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            return Response(bound_data, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

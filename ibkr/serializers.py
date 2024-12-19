@@ -75,7 +75,6 @@ class SystemDataListSerializer(serializers.ModelSerializer):
 class UpperLowerBoundSerializer(serializers.Serializer):
     time_frame = serializers.ChoiceField(choices=SystemData.TIME_FRAME_CHOICES)  # Validates against predefined choices
     time_steps = serializers.IntegerField()  # Positive integer for time steps
-    conid = serializers.IntegerField()  # Integer representing contract ID
 
     def validate(self, data):
         time_frame_mapping = dict(SystemData.TIME_FRAME_CHOICES)
@@ -96,7 +95,6 @@ class UpperLowerBoundSerializer(serializers.Serializer):
         unit_part = match.group(2)
 
         data['period'] = f"{time_steps * numerical_part}{unit_part}"
-        data['conid'] = f"{data.get('conid')}"
         return data
 
 
