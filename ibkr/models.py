@@ -46,8 +46,7 @@ class SystemData(BaseModel):
     ]
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     instrument = models.ForeignKey(Instrument, on_delete=models.CASCADE, blank=True, null=True)
-    instrument_data = models.JSONField(blank=True, null=True)
-    timer = models.ForeignKey('TimerData', on_delete=models.CASCADE, blank=True, null=True)
+    ticker_data = models.JSONField(blank=True, null=True)
     analysis_time = models.IntegerField(blank=True, null=True)
     time_frame = models.CharField(max_length=100, choices=TIME_FRAME_CHOICES, blank=True, null=True)
     time_steps = models.IntegerField(blank=True, null=True)
@@ -91,12 +90,13 @@ class TradingStatus(BaseModel):
 
 
 class TimerData(BaseModel):
+    user= models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
     start_time = models.TimeField()
     place_order = models.BooleanField(blank=True, null=True)
 
     def __str__(self):
-        return f"{self.user.username} - {self.timer_value}"
+        return f"{self.timer_value}-{self.start_time}"
 
 
 class PlaceOrder(BaseModel):
