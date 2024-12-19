@@ -401,12 +401,12 @@ class IBKRTokenView(APIView, IBKRBase):
         super().__init__(**kwargs)
         IBKRBase.__init__(self)
 
-    def post(self, request):
+    def get(self, request):
         try:
             data = self.tickle()
             session_token = data['data']['session']
         except (KeyError, ValueError):
-            raise IBKRAPIError("Failed to retrieve session token from Tickle API response.")
+            return Response({'error': 'Unable to authenticate with IBKR API. Please login on client portal.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(session_token, status=status.HTTP_400_BAD_REQUEST)
+        return Response(session_token, status=status.HTTP_200_OK)
 
