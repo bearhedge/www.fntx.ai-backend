@@ -7,7 +7,7 @@ def fetch_bounds_from_json(json_data):
 
     response = {
         "upper_bound": max_highest_price,
-        "Lower_bound": min_lowest_price
+        "lower_bound": min_lowest_price
     }
 
     return response

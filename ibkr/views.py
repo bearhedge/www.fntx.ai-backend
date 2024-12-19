@@ -10,8 +10,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
+
+from core.exceptions import IBKRAPIError
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData
+from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData, PlaceOrder
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
      TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
     SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer
@@ -135,7 +137,7 @@ class SystemDataView(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset().filter(user=request.user).first()
         if not queryset:
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Not found."}, status=status.HTTP_200_OK)
 
         serializer = self.get_serializer(queryset)
         return Response(serializer.data)
@@ -212,6 +214,8 @@ class TimerDataViewSet(viewsets.ModelViewSet):
         return Response({"detail": "No TimerData found"}, status=404)
 
     def create(self, request):
+        data = request.data
+        data['original_timer_value'] = data.get('timer_value')
         serializer = TimerDataSerializer(data=request.data)
         if serializer.is_valid():
             timer = serializer.save(user=request.user)
@@ -306,6 +310,10 @@ class RangeDataView(APIView, IBKRBase):
     serializer_class = UpperLowerBoundSerializer
     http_method_names = ['post']
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
+
     def get_market_data(self, conid, period):
         base_url = settings.IBKR_BASE_URL + "/iserver/marketdata/history"
 
@@ -313,7 +321,7 @@ class RangeDataView(APIView, IBKRBase):
             data = self.tickle()
             session_token = data['data']['session']
         except (KeyError, ValueError):
-            raise "Invalid response from tickle API."
+            raise IBKRAPIError("Failed to retrieve session token from Tickle API response.")
 
         params = {
             'conid': conid,
@@ -325,14 +333,21 @@ class RangeDataView(APIView, IBKRBase):
             if response.status_code == 200:
                 return fetch_bounds_from_json(response.json())
         except requests.exceptions.RequestException as e:
-            raise f"Market data API error: {str(e)}"
+            raise IBKRAPIError(f"Market data API error: {str(e)}")
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             conid = serializer.validated_data['conid']
             period = serializer.validated_data['period']
-            bound_data = serializer.get_market_data(conid,period)
+            try:
+                bound_data = self.get_market_data(conid, period)
+                return Response(bound_data, status=status.HTTP_200_OK)
+            except IBKRAPIError as e:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
             return Response(bound_data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -357,6 +372,7 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = PlaceOrderSerializer
     http_method_names = ['post']
+    queryset = PlaceOrder.objects.all()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -373,12 +389,4 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
             return Response(response['data'], status=status.HTTP_201_CREATED)
         else:
             return Response(response, status=response.get('status', status.HTTP_400_BAD_REQUEST))
-            validated_data = serializer.validated_data
-            conid = validated_data['conid']
-            period = validated_data['period']
-            try:
-                market_data = self.get_market_data(conid, period)
-                return Response({"market_data": market_data}, status=status.HTTP_200_OK)
-            except Exception as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
