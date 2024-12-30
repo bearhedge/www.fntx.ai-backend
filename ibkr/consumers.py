@@ -89,6 +89,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                             "live_data": live_data,
                         }
 
+        if strike_entry.get("call") and strike_entry.get("put"):
             self.strike_data_list.append(strike_entry)
 
         return self.strike_data_list
@@ -128,8 +129,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                     option_data = strike_entry.get(option_type)
                     if option_data and option_data.get("conid"):
                         live_data = await self.fetch_live_data(option_data["conid"])
-                        if live_data:
-                            option_data["live_data"] = live_data
+                        option_data["live_data"] = live_data if live_data else []
                 await self.send(text_data=json.dumps({
                     "option_chain_data": self.strike_data_list, "error": None, "authentication": True
                 }))
