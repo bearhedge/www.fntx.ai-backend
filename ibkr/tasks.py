@@ -1,3 +1,5 @@
+from datetime import timedelta, datetime
+
 import requests
 
 
@@ -6,11 +8,13 @@ from django.conf import settings
 from django_celery_beat.models import PeriodicTask
 
 from core.celery_response import log_task_status
+from core.exceptions import IBKRValueError
 from core.views import IBKRBase
-from ibkr.models import OnBoardingProcess, TimerData
+from ibkr.models import OnBoardingProcess, TimerData, Strikes
+from ibkr.utils import calculate_strike_range
 
 
-@shared_task
+@shared_task(bind=True)
 def tickle_ibkr_session(self, data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
@@ -42,7 +46,7 @@ def tickle_ibkr_session(self, data=None):
         self.update_state(state="FAILURE", meta=error_details)
         raise
 
-@shared_task
+@shared_task(bind=True)
 def update_timer(self, timer_id):
     task_name = "update_timer"
     try:
@@ -50,16 +54,94 @@ def update_timer(self, timer_id):
         timer = TimerData.objects.get(id=timer_id)
         if timer.timer_value > 0:
             timer.timer_value -= 1
+
+            # increase time by 1 minute
+            timer_start_time = timer.start_time
+            current_datetime = datetime.combine(datetime.today(), timer_start_time)
+            updated_datetime = current_datetime + timedelta(minutes=1)
+            timer.start_time = updated_datetime.time()
             timer.save()
-            log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
+            success_details = log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
         else:
             timer.place_order = False
             timer.save()
-            log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
+            success_details = log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
+        self.update_state(state="SUCCESS", meta=success_details)
+
     except Exception as e:
         error_details = log_task_status(task_name, exception=e, additional_data={"timer_id": timer_id})
         self.update_state(state="FAILURE", meta=error_details)
         raise
+
+
+# @shared_task
+# def fetch_and_validate_strikes(contract_id):
+#     chain(
+#         fetch_and_save_strikes.s(contract_id),
+#         validate_strikes.s(contract_id).set(immutable=True)
+#     )()
+
+
+@shared_task(bind=True)
+def fetch_and_save_strikes(self, contract_id, user_id, month):
+    task_name = "fetch_and_save_strikes"
+    ibkr = IBKRBase()
+    strikes_response = ibkr.fetch_strikes(contract_id, month)
+    validated_strikes = {}
+    last_day_price = None
+    if strikes_response.get('success'):
+        # fetch the last day price of the contract
+        last_day_price = ibkr.last_day_price(contract_id)
+        if last_day_price.get('success'):
+            try:
+                validated_strikes = calculate_strike_range(strikes_response.get("data"), last_day_price.get('last_day_price'))
+            except IBKRValueError as e:
+                error_details = log_task_status(task_name, exception=e, additional_data={"contract_id": contract_id})
+                self.update_state(state="FAILURE", meta=error_details)
+                raise
+    else:
+        error_details = log_task_status(task_name, message="Unable to authenticate with IBKR Api. Please login first to continue", additional_data={"contract_id": contract_id})
+        self.update_state(state="FAILURE", meta=error_details)
+        raise
+
+
+    for key, strikes in validated_strikes.items():
+        for strike in strikes:
+            # Update if exists or create otherwise
+            Strikes.objects.update_or_create(
+                contract_id=contract_id,
+                strike_price=strike,
+                right="P" if key == 'put' else "C",
+                month=month,
+                defaults={
+                    'last_price': last_day_price.get('last_day_price'),
+                }
+            )
+    success_details = log_task_status(task_name, message="Strikes fetched and saved", additional_data={"contract_id": contract_id})
+    self.update_state(state="SUCCESS", meta=success_details)
+
+
+# @shared_task
+# def validate_strikes(contract_id):
+#     ibkr = IBKRBase()
+#
+#     strikes = Strikes.objects.filter(contract_id=contract_id)
+#
+#     for strike in strikes:
+#         response = ibkr.strike_info(strike.contract_id, strike.strike_price, strike.right)
+#         if response:
+#             maturity_date = response.get("maturityDate")
+#             print(maturity_date)
+#             print("=========================")
+#             print(datetime.now().strftime("%Y%m%d"))
+#             if maturity_date and int(maturity_date)  > int(datetime.now().strftime("%Y%m%d")):
+#                 strike.is_valid = True
+#             else:
+#                 strike.is_valid = False
+#             strike.maturity_date = maturity_date
+#         strike.save()
+
+
 
 def _disable_task_and_update_status(onboarding_obj, task_id, task_name):
     """

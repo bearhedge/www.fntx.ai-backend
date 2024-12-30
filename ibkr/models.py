@@ -40,55 +40,38 @@ class SystemData(BaseModel):
         ('1-day', '1d'),
         ('4-hours', '4h'),
         ('1-hour', '1h'),
-        ('30-min', '30min'),
-        ('15-min', '15min'),
-        ('5-min', '5min'),
+        ('30-mins', '30min'),
+        ('15-mins', '15min'),
+        ('5-mins', '5min'),
     ]
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     instrument = models.ForeignKey(Instrument, on_delete=models.CASCADE, blank=True, null=True)
-    instrument_data = models.JSONField(blank=True, null=True)
-    timer = models.ForeignKey('TimerData', on_delete=models.CASCADE, blank=True, null=True)
+    ticker_data = models.JSONField(blank=True, null=True)
     analysis_time = models.IntegerField(blank=True, null=True)
     time_frame = models.CharField(max_length=100, choices=TIME_FRAME_CHOICES, blank=True, null=True)
     time_steps = models.IntegerField(blank=True, null=True)
     confidence_level = models.IntegerField(blank=True, null=True)
     contract_expiry = models.IntegerField(blank=True, null=True)
     contract_id = models.CharField(max_length=100, blank=True, null=True)
+    contract_trading_months = models.TextField(blank=True, null=True)
     no_of_contracts = models.IntegerField(blank=True, null=True)
     contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)
     upper_bound = models.FloatField(blank=True, null=True)
     lower_bound = models.FloatField(blank=True, null=True)
+    form_step = models.PositiveIntegerField(default=0)
+    validate_strikes_task = models.ForeignKey(PeriodicTask, on_delete=models.CASCADE, blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.email} - {self.instrument}"
 
-    def get_available_margin(self):
-        try:
-            ibkr_base_url = settings.IBKR_BASE_URL
-            account_id = "U15796707"
-            response = requests.get(f"{ibkr_base_url}/portfolio/{account_id}/summary", verify=False)
-            if response.status_code == 200:
-                account_summary = response.json()
-                available_margin = account_summary.get('available_margin', 0)
-                return available_margin
-            else:
-                return 0
-        except Exception as e:
-            return 0
+    @property
+    def contract_leg_type(self):
+        if self.contract_type == 'both':
+            return 'DOUBLE LEG'
+        elif not self.contract_type:
+            return None
+        return 'SINGLE LEG'
 
-    def calculate_order_amount(self):
-        available_margin = self.get_available_margin()
-        order_amount = available_margin * (self.confidence_level / 100)
-        return order_amount
-
-class OrderData(SystemData):
-    limit_sell = models.FloatField()
-    limit_buy = models.FloatField()
-    stop_loss = models.FloatField()
-    take_profit = models.FloatField()
-
-    def __str__(self):
-        return f"{self.user.email} - {self.instrument}"
 
 class TradingStatus(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
@@ -100,12 +83,14 @@ class TradingStatus(BaseModel):
 
 
 class TimerData(BaseModel):
+    user= models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
+    original_timer_value = models.IntegerField()
     start_time = models.TimeField()
     place_order = models.BooleanField(blank=True, null=True)
 
     def __str__(self):
-        return f"{self.user.username} - {self.timer_value}"
+        return f"{self.timer_value}-{self.start_time}"
 
 
 class PlaceOrder(BaseModel):
@@ -131,14 +116,26 @@ class PlaceOrder(BaseModel):
     accountId = models.CharField(max_length=100)
     conid = models.IntegerField()
     orderType = models.CharField(max_length=4, choices=ORDER_TYPE_CHOICES)
-    price = models.IntegerField(blank=True, null=True)
+    price = models.FloatField(blank=True, null=True)
     side = models.CharField(max_length=4, choices=SIDE_CHOICES)
     tif = models.CharField(max_length=4, choices=TIF_CHOICES)
     quantity = models.IntegerField()
-    exp_date = models.CharField(max_length=8, blank=True, null=True)  # Format: YYYYMMDD
-    exp_time = models.CharField(max_length=8, blank=True, null=True)  # Format: HH:MM(:SS)
+    exp_date = models.CharField(max_length=8, blank=True, null=True)
+    exp_time = models.CharField(max_length=8, blank=True, null=True)
+
+    limit_sell = models.FloatField(blank=True, null=True)
+    limit_buy = models.FloatField(blank=True, null=True)
+    stop_loss = models.FloatField(blank=True, null=True)
+    take_profit = models.FloatField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"
 
-#DUA785929
+
+class Strikes(BaseModel):
+    contract_id = models.CharField(max_length=255)
+    strike_price = models.FloatField()
+    last_price = models.FloatField()
+    is_valid = models.BooleanField(blank=True, null=True)
+    month = models.CharField(max_length=15, blank=True, null=True)
+    right = models.CharField(max_length=10) # tells if the strike is for Put or Call
