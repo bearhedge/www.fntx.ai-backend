@@ -256,6 +256,8 @@ class SymbolDataView(APIView, IBKRBase):
                 if response.get('data').get('authenticated'):
                     search_spy_data = self.get_spy_conId(symbol)
                     return Response(search_spy_data, status=status.HTTP_200_OK)
+                else:
+                    return Response({'error': 'Unable to authenticate with IBKR API. Please login on client portal. '}, status=status.HTTP_400_BAD_REQUEST)
 
             return Response({'error': response.get('error')}, status=response.get('status'))
         except requests.exceptions.RequestException as e:

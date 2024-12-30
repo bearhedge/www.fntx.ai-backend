@@ -31,9 +31,11 @@ def tickle_ibkr_session(self, data=None):
 
     ibkr = IBKRBase()
     response = ibkr.auth_status()
-
     if not response.get('success'):
-        return _disable_task_and_update_status(onboarding_obj, task_id)
+        return _disable_task_and_update_status(onboarding_obj, task_id, task_name)
+    elif response.get('success') and not response.get('data').get('authenticated'):
+        return _disable_task_and_update_status(onboarding_obj, task_id, task_name)
+
 
     tickle_url = f"{settings.IBKR_BASE_URL}/tickle"
 
@@ -121,28 +123,6 @@ def fetch_and_save_strikes(self, contract_id, user_id, month):
     self.update_state(state="SUCCESS", meta=success_details)
 
 
-# @shared_task
-# def validate_strikes(contract_id):
-#     ibkr = IBKRBase()
-#
-#     strikes = Strikes.objects.filter(contract_id=contract_id)
-#
-#     for strike in strikes:
-#         response = ibkr.strike_info(strike.contract_id, strike.strike_price, strike.right)
-#         if response:
-#             maturity_date = response.get("maturityDate")
-#             print(maturity_date)
-#             print("=========================")
-#             print(datetime.now().strftime("%Y%m%d"))
-#             if maturity_date and int(maturity_date)  > int(datetime.now().strftime("%Y%m%d")):
-#                 strike.is_valid = True
-#             else:
-#                 strike.is_valid = False
-#             strike.maturity_date = maturity_date
-#         strike.save()
-
-
-
 def _disable_task_and_update_status(onboarding_obj, task_id, task_name):
     """
     Helper function to disable a task and update onboarding status.
@@ -155,4 +135,4 @@ def _disable_task_and_update_status(onboarding_obj, task_id, task_name):
         task.enabled = False
         task.save()
 
-    return log_task_status(task_name, message="Authentication failed. Task disabled.", additional_data={"timer_id": task_id})
+    return log_task_status(task_name, message="Authentication failed. Task disabled.", additional_data={"onboarding_id": task_id})
