@@ -1,12 +1,14 @@
-import requests
-from django.conf import settings
-from rest_framework import serializers
-from rest_framework.views import APIView
-
-from ibkr.utils import fetch_bounds_from_json
-from ibkr.models import TimerData, OnBoardingProcess, SystemData, TradingStatus ,Instrument, PlaceOrder
-from core.views import IBKRBase
+import json
 import re
+import requests
+
+from django.conf import settings
+from django_celery_beat.models import IntervalSchedule, PeriodicTask
+from rest_framework import serializers
+
+from ibkr.models import TimerData, OnBoardingProcess, SystemData, TradingStatus ,Instrument, PlaceOrder
+from ibkr.tasks import fetch_and_save_strikes
+from core.views import IBKRBase
 
 
 class OnboardingSerailizer(serializers.ModelSerializer):
@@ -55,10 +57,101 @@ class SystemDataSerializer(serializers.ModelSerializer):
         model = SystemData
         fields = "__all__"
 
+    def create(self, validated_data):
+        ticker_data = validated_data.get('ticker_data')
+        valid_contract = False
+        if ticker_data:
+            contract_id = ticker_data.get('conid')
+            sections = ticker_data.get('sections')
+            for section in sections:
+                if section.get('secType') == 'OPT':
+                    months = section.get("months").split(';')
+                    if months:
+                        month = months[0]
+                        valid_contract = True
+                        break
+            if not valid_contract:
+                raise serializers.ValidationError("Cannot use this contract_id as it is not for options trading.")
+
+            if contract_id:
+                validated_data['contract_id'] = contract_id
+
+
+                schedule, _ = IntervalSchedule.objects.get_or_create(
+                    every=5,
+                    period=IntervalSchedule.MINUTES
+                )
+
+                task = PeriodicTask.objects.create(
+                    interval=schedule,
+                    name=f'Fetch and Validate Strikes for {contract_id}',
+                    task='ibkr.tasks.fetch_and_save_strikes',
+                    args=json.dumps([contract_id, str(validated_data["user"]), month]),
+                )
+                validated_data['validate_strikes_task'] = task
+
+        created_instance = SystemData.objects.create(**validated_data)
+        fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month])
+
+        return created_instance
+
+    def update(self, instance, validated_data):
+        ticker_data = validated_data.get('ticker_data')
+        valid_contract = False
+        month = None
+        if ticker_data:
+            contract_id = ticker_data.get('conid')
+            sections = ticker_data.get('sections')
+
+            for section in sections:
+                if section.get('secType') == 'OPT':
+                    months = section.get("months").split(';')
+                    if months:
+                        month = months[0]
+                        valid_contract = True
+                        break
+
+            if not valid_contract:
+                raise serializers.ValidationError("Cannot use this contract_id as it is not for options trading.")
+
+            # Update the instance with the new contract_id
+            if contract_id and contract_id != instance.contract_id:
+                validated_data['contract_id'] = contract_id
+
+                # Update the associated periodic task or create a new one if does not exist
+                if instance.validate_strikes_task:
+                    task = instance.validate_strikes_task
+                    task.args = json.dumps([contract_id, str(validated_data["user"]), month])
+                    task.name = f'Fetch and Validate Strikes for {contract_id}'
+                    task.save()
+                else:
+                    schedule, _ = IntervalSchedule.objects.get_or_create(
+                        every=5,
+                        period=IntervalSchedule.MINUTES
+                    )
+
+                    task = PeriodicTask.objects.create(
+                        interval=schedule,
+                        name=f'Fetch and Validate Strikes for {contract_id}',
+                        task='ibkr.tasks.fetch_and_save_strikes',
+                        args=json.dumps([contract_id, str(validated_data["user"]), month]),
+                    )
+                    validated_data['validate_strikes_task'] = task
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Save the updated instance
+        instance.save()
+
+        if ticker_data and contract_id:
+            fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month])
+
+        return instance
+
 class SystemDataListSerializer(serializers.ModelSerializer):
     timer = serializers.SerializerMethodField()
     contract_leg_type = serializers.SerializerMethodField()
-
 
     class Meta:
         model = SystemData

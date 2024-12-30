@@ -1,95 +1,94 @@
 import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-import numpy as np
+import requests
 
-def fetch_trailing_prices(ticker, num_days):
-    # Calculate the end date (today) and start date (double the required days to ensure enough data)
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=num_days * 2)  # Fetch extra days to account for non-trading days
+def get_yahoo_options(ticker, expiration_date):
+    """Fetch options data from Yahoo Finance for a given ticker and expiration date."""
+    try:
+        stock = yf.Ticker(ticker)
+        print(stock.options, "==============")
+        expirations = stock.options
+        if expiration_date not in expirations:
+            raise ValueError(f"Expiration date {expiration_date} not available. Available dates: {expirations}")
 
-    # Generate all business days (trading days) within the date range
-    all_dates = pd.date_range(start=start_date, end=end_date, freq='B')  # 'B' stands for business day frequency
+        options_chain = stock.option_chain(expiration_date)
+        print(options_chain)
+        print("option_chain" * 100)
+        return options_chain
+    except Exception as e:
+        print(f"Error fetching options from Yahoo Finance: {e}")
+        return None
 
-    # Fetch historical price data from Yahoo Finance
-    data = yf.download(ticker, start=all_dates[0], end=all_dates[-1] + timedelta(days=1))  # Include end day
+# Step 2: Extract Target Option Contract Symbol
+def extract_contract_symbol(options_chain, strike, option_type):
+    """Extract the contract symbol for a specific strike price and option type."""
+    options = options_chain.calls if option_type.upper() == "C" else options_chain.puts
+    target_option = options[options['strike'] == strike]
 
-    # Check if any data was fetched
-    if data.empty:
-        raise ValueError("No data fetched for the specified date range.")
+    if target_option.empty:
+        raise ValueError(f"No {option_type} option found for strike {strike}.")
 
-    # Convert the index to date-only format to align with generated trading days
-    data.index = data.index.date
-    all_dates = all_dates.date
+    return target_option.iloc[0]['contractSymbol']
 
-    # Filter the data to include only rows that match trading days
-    data = data.loc[data.index.intersection(all_dates)]
+# Step 3: Map Yahoo Finance Contract Symbol to IBKR Conid
+def get_ibkr_conid(base_url, ticker, expiration, strike, right):
+    """Map Yahoo contract to IBKR conid."""
+    url = f"{base_url}/iserver/secdef/search?symbol={ticker}"
+    response = requests.get(url, verify=False)
+    if response.status_code != 200:
+        raise ConnectionError(f"Failed to fetch IBKR contracts: {response.status_code}, {response.text}")
 
-    # Extract the closing prices from the data
-    closing_prices = data['Close']
+    contracts = response.json()
+    print(contracts, "----------------------")
+    target_contract = next(
+        (c for c in contracts if c.get('expiry') == expiration and c.get('strike') == strike and c.get('right') == right),
+        None
+    )
 
-    # Ensure exactly `num_days` of data is returned (trim excess)
-    if len(closing_prices) > num_days:
-        closing_prices = closing_prices.tail(num_days)
+    if not target_contract:
+        raise ValueError("Target option not found in IBKR contracts.")
 
-    return closing_prices
+    return target_contract['conid']
 
-def compute_returns(prices):
-    # Calculate daily percentage returns from the closing prices
-    returns = prices.pct_change().dropna()  # Drop the first NaN value caused by pct_change
-    return returns
+# Step 4: Query IBKR for Live Data
+def get_ibkr_live_data(base_url, conid):
+    """Fetch real-time data for a given conid from IBKR."""
+    url = f"{base_url}/iserver/marketdata/snapshot?conids={conid}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        raise ConnectionError(f"Failed to fetch IBKR live data: {response.status_code}, {response.text}")
 
-def calculate_statistics(returns):
-    # Calculate the mean and standard deviation of daily returns
-    mean_return = returns.mean()
-    std_dev_return = returns.std()
-    return mean_return, std_dev_return
+    return response.json()
 
-def annualize_volatility(daily_std_dev):
-    # Annualize the daily volatility using the square root of trading days in a year (252)
-    annualized_volatility = daily_std_dev * np.sqrt(252)
-    return annualized_volatility
+# Test the Workflow
+def main():
+    ticker = "SPY"
+    expiration_date = "2024-12-20"
+    strike_price = 470
+    option_type = "C"
 
-def compute_expected_range(latest_price, daily_volatility):
-    # Calculate the expected price range based on the latest price and daily volatility
-    range_upper = latest_price * (1 + daily_volatility)
-    range_lower = latest_price * (1 - daily_volatility)
-    return range_upper, range_lower
+    # IBKR API Base URL (replace with actual base URL)
+    ibkr_base_url = "https://localhost:5000/v1/api"
 
-# Parameters
-ticker = 'SPY'  # Ticker symbol for the stock/ETF to analyze
-num_days = int(input("Enter number of trailing trading days: "))  # User input for number of days to analyze
+    try:
+        # Step 1: Fetch Yahoo Finance Options Data
+        options_chain = get_yahoo_options(ticker, expiration_date)
+        if not options_chain:
+            return
 
-# Fetch and process data
-try:
-    # Fetch historical closing prices for the specified ticker and time frame
-    prices = fetch_trailing_prices(ticker, num_days)
-    print(f"Closing prices for the trailing {num_days} trading days from today:")
-    print(prices)
+        # Step 2: Extract Contract Symbol
+        contract_symbol = extract_contract_symbol(options_chain, strike_price, option_type)
+        print(f"Yahoo Finance Contract Symbol: {contract_symbol}")
 
-    # Compute daily returns from the fetched prices
-    returns = compute_returns(prices)
-    print("\nDaily Returns:")
-    print(returns)
+        # Step 3: Map to IBKR Conid
+        conid = get_ibkr_conid(ibkr_base_url, ticker, expiration_date, strike_price, option_type)
+        print(f"IBKR Conid: {conid}")
 
-    # Calculate statistical metrics: mean and standard deviation of returns
-    mean_return, std_dev_return = calculate_statistics(returns)
-    print(f"\nMean of Daily Returns: {mean_return:.6f}")
-    print(f"Standard Deviation of Daily Returns: {std_dev_return:.6f}")
+        # Step 4: Fetch Live Data from IBKR
+        live_data = get_ibkr_live_data(ibkr_base_url, conid)
+        print("IBKR Live Data:", live_data)
 
-    # Calculate the annualized volatility based on the standard deviation of daily returns
-    annualized_volatility = annualize_volatility(std_dev_return)
-    print(f"Annualized Volatility: {annualized_volatility:.6f}")
+    except Exception as e:
+        print(f"Error in workflow: {e}")
 
-    # Get the most recent closing price from the data
-    latest_price = prices.iloc[-1]
-
-    # Compute the expected upper and lower bounds for the stock price
-    range_upper, range_lower = compute_expected_range(latest_price, std_dev_return)
-    print(f"\nExpected Price Range for the latest price ({latest_price:.2f}):")
-    print(f"Upper Bound: {range_upper:.2f}")
-    print(f"Lower Bound: {range_lower:.2f}")
-
-except ValueError as e:
-    # Handle cases where no data was fetched
-    print(e)
+if __name__ == "__main__":
+    main()

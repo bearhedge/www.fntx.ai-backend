@@ -1,3 +1,4 @@
+import json
 import re
 from django.contrib.auth.hashers import make_password
 from django_celery_beat.models import PeriodicTask, IntervalSchedule
@@ -120,18 +121,22 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
             periodic_task = PeriodicTask.objects.create(
                 interval=interval_schedule,
                 name=task_name,
-                task="tickle_ibkr_session",
-                enabled=False
+                task="ibkr.tasks.tickle_ibkr_session",
+                enabled=True
             )
 
             # save the args of the task
-            args = {"user_id": user.id, "task_id": periodic_task.id, "onboarding_id": onboarding_process.id,}
-            periodic_task.args = args
+            args = [{"user_id": str(user.id), "task_id": periodic_task.id, "onboarding_id": str(onboarding_process.id)}]
+            periodic_task.args = json.dumps(args)
             periodic_task.save()
 
             # Link periodic task to the onboarding process
             onboarding_process.periodic_task = periodic_task
             onboarding_process.save()
+        else:
+            task = onboarding_process.periodic_task
+            task.enabled = True
+            task.save()
 
         data = {"refresh": str(refresh), "access": str(refresh.access_token), "user": {
             "username": user.username,
