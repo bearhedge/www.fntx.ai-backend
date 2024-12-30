@@ -1,3 +1,7 @@
+import json
+import re
+import time
+
 import requests
 from django.conf import settings
 
@@ -43,6 +47,18 @@ class IBKRBase:
         except Exception as e:
             return {"success": False, "error": str(e), "status": 500}
 
+    def fetch_strikes(self, contract_id, month):
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/strikes?conid={contract_id}&sectype=OPT&month={month}", verify=False)
+            print(response.content)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except Exception as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+
     def tickle(self):
         try:
             response = requests.post(f"{self.ibkr_base_url}/tickle", verify=False)
@@ -59,6 +75,47 @@ class IBKRBase:
             response = requests.post(url, json=[order_data], verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+
+    def last_day_price(self, contract_id):
+        try:
+            requests.get(url=f"{self.ibkr_base_url}/iserver/marketdata/snapshot?conids={contract_id}&fields=31", verify=False)
+            # wait for one second to again hit the snapshot API
+            time.sleep(1)
+
+            response = requests.get(f"{self.ibkr_base_url}/iserver/marketdata/snapshot?conids={contract_id}&fields=31", verify=False)
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    price = data[0].get('31')
+                    pattern = r'\d+(\.\d+)?'
+                    match = re.search(pattern, price)
+                    last_day_price = match.group(0) if match else None
+                    if last_day_price:
+                        return {"success": True, "last_day_price": float(last_day_price)}
+                    else:
+                        return {"success": False, "error": "Error fetching the last price for the given contract id.", "status":500}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+
+    def strike_info(self, conid, strike, right, month):
+        url = f'{self.ibkr_base_url}/iserver/secdef/info?conid={conid}&secType=OPT&month={month}&strike={strike}&right={right}'
+        try:
+            response = requests.get(url, verify=False)
+            print(response.content)
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    return {"success": True, "data": data}
+                else:
+                    return {"success": False, "status": "No data"}
             else:
                 return {"success": False, "status": response.status_code}
         except requests.exceptions.RequestException as e:

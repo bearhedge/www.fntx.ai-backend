@@ -53,10 +53,13 @@ class SystemData(BaseModel):
     confidence_level = models.IntegerField(blank=True, null=True)
     contract_expiry = models.IntegerField(blank=True, null=True)
     contract_id = models.CharField(max_length=100, blank=True, null=True)
+    contract_trading_months = models.TextField(blank=True, null=True)
     no_of_contracts = models.IntegerField(blank=True, null=True)
     contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)
     upper_bound = models.FloatField(blank=True, null=True)
     lower_bound = models.FloatField(blank=True, null=True)
+    form_step = models.PositiveIntegerField(default=0)
+    validate_strikes_task = models.ForeignKey(PeriodicTask, on_delete=models.CASCADE, blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.email} - {self.instrument}"
@@ -128,4 +131,11 @@ class PlaceOrder(BaseModel):
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"
 
-#DUA785929
+
+class Strikes(BaseModel):
+    contract_id = models.CharField(max_length=255)
+    strike_price = models.FloatField()
+    last_price = models.FloatField()
+    is_valid = models.BooleanField(blank=True, null=True)
+    month = models.CharField(max_length=15, blank=True, null=True)
+    right = models.CharField(max_length=10) # tells if the strike is for Put or Call
