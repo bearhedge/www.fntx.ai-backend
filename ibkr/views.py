@@ -172,6 +172,17 @@ class SystemDataView(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
+        ibkr = IBKRBase()
+        authentication = ibkr.auth_status()
+        if not authentication.get('success'):
+            authenticated = False
+        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+            authenticated = False
+        else:
+            authenticated = True
+        if not authenticated:
+            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
+                            status=status.HTTP_400_BAD_REQUEST)
         data = request.data
         data["user"] = request.user.id
         serializer = self.get_serializer(data=data)
@@ -180,6 +191,17 @@ class SystemDataView(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
+        ibkr = IBKRBase()
+        authentication = ibkr.auth_status()
+        if not authentication.get('success'):
+            authenticated = False
+        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+            authenticated = False
+        else:
+            authenticated = True
+        if not authenticated:
+            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
+                            status=status.HTTP_400_BAD_REQUEST)
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         data = request.data
