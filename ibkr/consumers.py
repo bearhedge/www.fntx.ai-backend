@@ -23,10 +23,10 @@ class StrikesConsumer(AsyncWebsocketConsumer):
         contract_id = data.get("contract_id")
         authentication = self.ibkr.auth_status()
         if not authentication.get("success"):
-            await self.send({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."})
+            await self.send(text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
             return
         if not contract_id:
-            await self.send({"error": "contract_id is a required parameter.", "authentication": True})
+            await self.send(text_data=json.dumps({"error": "contract_id is a required parameter.", "authentication": True}))
             return
 
         strikes = await sync_to_async(list)(
@@ -122,7 +122,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
         authentication = self.ibkr.auth_status()
         if not authentication.get("success"):
             await self.send(
-                {"authentication": False, "error": "You are not authenticated with IBKR. Please login first."})
+                text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
         while True:
             for strike_entry in self.strike_data_list:
                 for option_type in ["call", "put"]:
