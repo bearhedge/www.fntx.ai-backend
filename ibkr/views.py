@@ -1,8 +1,11 @@
 import json
+import requests
+
 from collections import defaultdict
 
-import requests
 from django.conf import settings
+from django.utils import timezone
+from django.utils.timezone import now
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.decorators import action
@@ -15,9 +18,10 @@ from core.exceptions import IBKRAPIError
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData, PlaceOrder
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
-     TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
-    SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer
+    TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
+    SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer, PlaceOrderListSerializer
 from ibkr.utils import fetch_bounds_from_json
+from ibkr.tasks import place_orders_task
 
 
 @extend_schema(tags=["IBKR"])
@@ -103,9 +107,24 @@ class OnboardingView(viewsets.ModelViewSet):
         """
         Retrieve the onboarding details for the authenticated user.
         """
+        ibkr = IBKRBase()
+        authentication = ibkr.auth_status()
+        if not authentication.get('success'):
+            authenticated = False
+        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+            authenticated = False
+        else:
+            authenticated = True
         user = request.user
         try:
             instance = OnBoardingProcess.objects.get(user=user)
+            if not instance.authenticated:
+                instance.authenticated = authenticated
+                instance.save()
+
+                periodic_task = instance.periodic_task
+                periodic_task.enabled = True
+                periodic_task.save()
         except OnBoardingProcess.DoesNotExist:
             return Response(
                 {
@@ -135,9 +154,9 @@ class SystemDataView(viewsets.ModelViewSet):
         return self.serializer_list_class
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset().filter(user=request.user).first()
+        queryset = self.get_queryset().filter(user=request.user, created_at__date=now().date()).first()
         if not queryset:
-            return Response({"detail": "Not found."}, status=status.HTTP_200_OK)
+            return Response({"error": "Not found."}, status=status.HTTP_200_OK)
 
         serializer = self.get_serializer(queryset)
         return Response(serializer.data)
@@ -218,30 +237,41 @@ class TimerDataViewSet(viewsets.ModelViewSet):
         return self.serializer_class
 
     def list(self, request):
-        timer = TimerData.objects.filter(user=request.user).first()
+        timer = TimerData.objects.filter(user=request.user, created_at=timezone.now()).first()
         if timer:
             serializer = self.get_serializer(timer)
             return Response(serializer.data)
-        return Response({"detail": "No TimerData found"}, status=404)
+        return Response({"error": "No TimerData found"}, status=404)
 
     def create(self, request):
+        today = now().date()
+        if TimerData.objects.filter(user=request.user, created_at__date=today).exists():
+            return Response({"error": "Timer already set for today."}, status=status.HTTP_400_BAD_REQUEST)
         data = request.data
         data['original_timer_value'] = data.get('timer_value')
+        data['timer_value'] = data.get('timer_value') - 1
         serializer = TimerDataSerializer(data=request.data)
         if serializer.is_valid():
             timer = serializer.save(user=request.user)
+
+            current_date = timezone.now().strftime("%Y-%m-%d")
+            task_name = f"Update Timer for {timer.id} - {request.user.username} - {current_date}"
 
             # Create a periodic task for the timer
             schedule, _ = IntervalSchedule.objects.get_or_create(
                 every=1,
                 period=IntervalSchedule.MINUTES
             )
-            PeriodicTask.objects.create(
+            task = PeriodicTask.objects.create(
                 interval=schedule,
-                name=f"Update Timer for {timer.id}",
-                task="ibkr.tasks.update_timer",
-                args=json.dumps([str(timer.id)]),
+                name=task_name,
+                task="ibkr.tasks.update_timer"
             )
+
+            timer.place_order = "P"
+            timer.save()
+            task.args = json.dumps([str(timer.id), str(task.id)])
+            task.save()
 
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
@@ -277,45 +307,6 @@ class SymbolDataView(APIView, IBKRBase):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-# @extend_schema(tags=["IBKR"])
-# class ContractsView(APIView, IBKRBase):
-#     permission_classes = [IsAuthenticated]
-#     serializer_class = UpperLowerBoundSerializer
-#
-#     def get_market_data(self, conid, period):
-#         base_url = settings.IBKR_BASE_URL + "/iserver/marketdata/history"
-#
-#         try:
-#             data = self.tickle()
-#             session_token = data['data']['session']
-#         except (KeyError, ValueError):
-#             raise "Invalid response from tickle API."
-#
-#         params = {
-#             'conid': conid,
-#             'period': period,
-#             'session': session_token
-#         }
-#         try:
-#             response = requests.get(base_url, params=params, verify=False)
-#             if response.status_code == 200:
-#                 return fetch_bounds_from_json(response.json())
-#         except requests.exceptions.RequestException as e:
-#             raise f"Market data API error: {str(e)}"
-#
-#     def post(self, request):
-#         serializer = self.serializer_class(data=request.data)
-#         if serializer.is_valid():
-#             validated_data = serializer.validated_data
-#             conid = validated_data['conid']
-#             period = validated_data['period']
-#             try:
-#                 market_data = self.get_market_data(conid, period)
-#                 return Response({"market_data": market_data}, status=status.HTTP_200_OK)
-#             except Exception as e:
-#                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @extend_schema(tags=["IBKR"])
 class RangeDataView(APIView, IBKRBase):
@@ -384,28 +375,93 @@ class GetHistoryDataView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["IBKR"])
+@extend_schema(tags=["Orders"])
 class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = PlaceOrderSerializer
-    http_method_names = ['post']
+    serializer_list_class = PlaceOrderListSerializer
+    http_method_names = ['post', 'get']
     queryset = PlaceOrder.objects.all()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         IBKRBase.__init__(self)
 
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return self.serializer_list_class
+        return self.serializer_class
+
     def create(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        order_data = serializer.validated_data
-        print(order_data)
-        response = self.placeOrder(order_data)
-        if response['success']:
-            return Response(response['data'], status=status.HTTP_201_CREATED)
-        else:
-            return Response(response, status=response.get('status', status.HTTP_400_BAD_REQUEST))
+        orders_data = request.data.get('order')
+        if not isinstance(orders_data, list):
+            return Response({"error": "Data should be an array of orders."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=orders_data, many=True)
+        if serializer.is_valid():
+            place_orders_task.delay(request.user.id, json.dumps(orders_data))
+            return Response({"message": "We have started placing your orders."}, status=status.HTTP_200_OK)
+
+        return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def list(self, request, *args, **kwargs):
+        ibkr_orders = []
+        queryset = self.get_queryset()
+        queryset = queryset.filter(user=request.user, is_deleted=False)
+        serializer = self.get_serializer(queryset, many=True)
+        ibkr_orders_response = self.retrieveOrders()
+        if ibkr_orders_response.get('success'):
+            ibkr_orders = ibkr_orders_response.get('data')
+        return Response({"ibkr_orders": ibkr_orders, "data":serializer.data}, status=status.HTTP_200_OK)
+
+    @extend_schema(summary="Cancel a placed order")
+    @action(detail=False, methods=["post"], url_path="cancel", url_name="cancel")
+    def cancel_order(self, request):
+        """
+        Cancels a placed order based on cOID and orderId received from the frontend.
+        """
+        cOID = request.data.get("cOID")
+        order_id = request.data.get("orderId")
+        account_id = request.data.get("accountId")
+
+        if not cOID or not order_id or not account_id:
+            return Response(
+                {"detail": "All cOID, orderId, accountId are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            order = PlaceOrder.objects.get(customer_order_id=cOID)
+
+            cancel_response = self.cancelOrder(order_id, account_id)
+
+            if cancel_response.get("success"):
+                order.is_deleted = True
+                order.save()
+
+                return Response(
+                    {"detail": f"Order {cOID} with orderId {order_id} has been cancelled successfully."},
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                return Response(
+                    {
+                        "detail": f"Failed to cancel order {cOID} with orderId {order_id}.",
+                        "error": cancel_response.get("message"),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except PlaceOrder.DoesNotExist:
+            return Response(
+                {"detail": f"Order with cOID {cOID} not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "An unexpected error occurred.", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 
 @extend_schema(tags=["IBKR"])

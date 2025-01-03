@@ -1,8 +1,11 @@
 import json
 import re
+from datetime import datetime
+
 import requests
 
 from django.conf import settings
+from django.utils.timezone import now
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from rest_framework import serializers
 
@@ -58,7 +61,12 @@ class SystemDataSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+        today = now().date()
+
         ticker_data = validated_data.get('ticker_data')
+        user = validated_data.get('user')
+        if SystemData.objects.filter(user=user, created_at__date=today).exists():
+            raise serializers.ValidationError({"error":"An entry for this user already exists for today."})
         valid_contract = False
         if ticker_data:
             contract_id = ticker_data.get('conid')
@@ -76,15 +84,21 @@ class SystemDataSerializer(serializers.ModelSerializer):
             if contract_id:
                 validated_data['contract_id'] = contract_id
 
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                task_name = f"Fetch and Validate Strikes for {contract_id} - {user} - {current_date}"
 
                 schedule, _ = IntervalSchedule.objects.get_or_create(
-                    every=5,
+                    every=3,
                     period=IntervalSchedule.MINUTES
                 )
 
+                existing_task = PeriodicTask.objects.filter(name=task_name)
+                if existing_task:
+                    existing_task.delete()
+
                 task = PeriodicTask.objects.create(
                     interval=schedule,
-                    name=f'Fetch and Validate Strikes for {contract_id}',
+                    name=task_name,
                     task='ibkr.tasks.fetch_and_save_strikes',
                     args=json.dumps([contract_id, str(validated_data["user"]), month]),
                 )
@@ -97,6 +111,8 @@ class SystemDataSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         ticker_data = validated_data.get('ticker_data')
+        user = validated_data.get('user')
+
         valid_contract = False
         month = None
         if ticker_data:
@@ -118,21 +134,26 @@ class SystemDataSerializer(serializers.ModelSerializer):
             if contract_id and contract_id != instance.contract_id:
                 validated_data['contract_id'] = contract_id
 
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                task_name = f"Fetch and Validate Strikes for {contract_id} - {user} - {current_date}"
+                schedule, _ = IntervalSchedule.objects.get_or_create(
+                    every=3,
+                    period=IntervalSchedule.MINUTES
+                )
+
                 # Update the associated periodic task or create a new one if does not exist
                 if instance.validate_strikes_task:
                     task = instance.validate_strikes_task
+                    task.interval = schedule
                     task.args = json.dumps([contract_id, str(validated_data["user"]), month])
-                    task.name = f'Fetch and Validate Strikes for {contract_id}'
+                    task.name = task_name
                     task.save()
                 else:
-                    schedule, _ = IntervalSchedule.objects.get_or_create(
-                        every=5,
-                        period=IntervalSchedule.MINUTES
-                    )
+
 
                     task = PeriodicTask.objects.create(
                         interval=schedule,
-                        name=f'Fetch and Validate Strikes for {contract_id}',
+                        name=task_name,
                         task='ibkr.tasks.fetch_and_save_strikes',
                         args=json.dumps([contract_id, str(validated_data["user"]), month]),
                     )
@@ -141,7 +162,6 @@ class SystemDataSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        # Save the updated instance
         instance.save()
 
         if ticker_data and contract_id:
@@ -159,7 +179,7 @@ class SystemDataListSerializer(serializers.ModelSerializer):
         depth = 1
 
     def get_timer(self, obj):
-        timer_instace = TimerData.objects.filter(user=obj.user).first()
+        timer_instace = TimerData.objects.filter(user=obj.user, created_at__date=now().date()).first()
         serailized_data = TimerDataListSerializer(timer_instace).data
         return serailized_data
 
@@ -247,9 +267,28 @@ class HistoryDataSerializer(serializers.Serializer, IBKRBase):
 class PlaceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceOrder
-        fields = ['orderType', 'side', 'price', 'tif', 'quantity', 'exp_date', 'exp_time']
+        fields = ['conid', 'price', 'quantity', 'limit_sell', 'stop_loss', 'take_profit', 'optionType']
 
-    def create(self, validated_data):
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
+    def validate(self, data):
+        stop_loss = data.get('stop_loss')
+        take_profit = data.get('take_profit')
+        optionType = data.get('optionType')
+
+        if not (100 <= stop_loss <= 600):
+            raise serializers.ValidationError({"error": "Stop loss must be between 100% and 500%."})
+
+        if not (1 <= take_profit <= 50):
+            raise serializers.ValidationError({"error": "Take profit must be between 1% and 50%."})
+
+        if not optionType in ['call', 'put']:
+            raise serializers.ValidationError({"error": "Option type must be call or put."})
+
+        return data
+
+
+class PlaceOrderListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceOrder
+        fields = "__all__"
+        depth = 1
 

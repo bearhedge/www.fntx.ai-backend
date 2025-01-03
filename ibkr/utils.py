@@ -1,4 +1,7 @@
+from django.db.models import Max
+
 from core.exceptions import IBKRValueError
+from ibkr.models import PlaceOrder
 
 
 def fetch_bounds_from_json(json_data):
@@ -34,7 +37,6 @@ def calculate_strike_range(strikes_response, last_day_price):
 
     all_call_strikes = strikes_response.get('call')
     all_put_strikes = strikes_response.get('put')
-    print(all_call_strikes, all_put_strikes)
     call_strikes = [strike for strike in all_call_strikes if lower_bound <= strike <= upper_bound]
     put_strikes = [strike for strike in all_put_strikes if lower_bound <= strike <= upper_bound]
 
@@ -43,5 +45,32 @@ def calculate_strike_range(strikes_response, last_day_price):
     return data
 
 
+def save_order(data_dict):
+    """
+     Save the order in local db placed by the user.
+
+     :param data_dict: Dictionary containing data that needs to be saved
+    """
+    return PlaceOrder.objects.create(**data_dict)
+
+
+def generate_customer_order_id():
+    """
+    Generates a new customer_order_id by incrementing the last saved ID in the database.
+    Format: FNTX-live-order-001
+    """
+    last_order = PlaceOrder.objects.aggregate(
+        max_id=Max('customer_order_id')
+    )['max_id']
+
+    if last_order:
+        # Extract numeric part and increment
+        prefix, order_num = last_order.split('-live-order-')
+        next_order_num = int(order_num) + 1
+        new_order_id = f"{prefix}-live-order-00{next_order_num}"
+    else:
+        new_order_id = "FNTX-live-order-001"
+
+    return new_order_id
 
 

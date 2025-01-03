@@ -34,6 +34,21 @@ class IBKRBase:
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
+    def brokerage_accounts(self):
+        """
+        Get list of all the accounts of the user
+        """
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/iserver/accounts", verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "error": "Unable to authenticate with IBKR API. Please login on client portal.", "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": "Unable to authenticate with IBKR API", "status": 500}
+
+
+
     def get_spy_conId(self, symbol):
         """
         Fetch the data for a particular symbol
@@ -69,16 +84,52 @@ class IBKRBase:
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
-    def placeOrder(self, order_data):
+    def placeOrder(self, account, order_data):
         try:
-            url = f"{self.ibkr_base_url}/iserver/account/{order_data['accountId']}/orders"
-            response = requests.post(url, json=[order_data], verify=False)
+            url = f"{self.ibkr_base_url}/iserver/account/{account}/orders"
+            response = requests.post(url, json=order_data, verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
                 return {"success": False, "status": response.status_code}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
+
+    def replyOrder(self, reply_id, json_content):
+        try:
+            url = f"{self.ibkr_base_url}/iserver/reply/{reply_id}"
+            response = requests.post(url, json=[json_content], verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+    def cancelOrder(self, order_id, account_id):
+        try:
+            url = f"{self.ibkr_base_url}/iserver/account/{account_id}/order/{order_id}"
+            response = requests.delete(url=url, verify=False)
+            if response.status_code == 200:
+                return {"success": True}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+
+    def retrieveOrders(self):
+        try:
+            self.brokerage_accounts()
+            url = f"{self.ibkr_base_url}/iserver/account/order/status/1533705195"
+            response = requests.get(url, verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
 
 
     def last_day_price(self, contract_id):

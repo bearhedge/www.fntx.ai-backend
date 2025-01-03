@@ -74,7 +74,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             # Process CALL and PUT data
             for obj in response["data"]:
                 maturity_date = obj.get("maturityDate")
-                if maturity_date and int(maturity_date) > int(datetime.now().strftime("%Y%m%d")):
+                if maturity_date and int(maturity_date) == int(datetime.now().strftime("%Y%m%d")):
                     live_data = await self.fetch_live_data(obj.get("conid"))
                     if obj.get("right") == "C":
                         strike_entry["call"] = {
@@ -106,7 +106,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
         Fetch live data for a given conid using the snapshot API.
         """
         try:
-            request_url = f"{self.ibkr.ibkr_base_url}/iserver/marketdata/snapshot?conids={conid}&fields=31,82,83,7085,7086,7089,7635"
+            request_url = f"{self.ibkr.ibkr_base_url}/iserver/marketdata/snapshot?conids={conid}&fields=31,82,83,87,7086,7638,7282"
             response = requests.get(url=request_url, verify=False)
             if response.status_code == 200:
                 return response.json()
@@ -135,5 +135,5 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                 }))
 
             # Wait for a few seconds before fetching live data again
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 

@@ -1,7 +1,9 @@
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import ForeignKey
+from django.utils.timezone import now
 from django_celery_beat.models import PeriodicTask
 from accounts.models import CustomUser
 from core.models import BaseModel
@@ -44,7 +46,7 @@ class SystemData(BaseModel):
         ('15-mins', '15min'),
         ('5-mins', '5min'),
     ]
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     instrument = models.ForeignKey(Instrument, on_delete=models.CASCADE, blank=True, null=True)
     ticker_data = models.JSONField(blank=True, null=True)
     analysis_time = models.IntegerField(blank=True, null=True)
@@ -62,7 +64,7 @@ class SystemData(BaseModel):
     validate_strikes_task = models.ForeignKey(PeriodicTask, on_delete=models.CASCADE, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.user.email} - {self.instrument}"
+        return f"{self.user.email} - {self.instrument} - {self.created_at}"
 
     @property
     def contract_leg_type(self):
@@ -83,20 +85,21 @@ class TradingStatus(BaseModel):
 
 
 class TimerData(BaseModel):
-    user= models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    user= models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
     original_timer_value = models.IntegerField()
     start_time = models.TimeField()
-    place_order = models.BooleanField(blank=True, null=True)
+    place_order = models.CharField(max_length=5, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.timer_value}-{self.start_time}"
+        return f"{self.timer_value}-{self.user}-{self.created_at}"
 
 
 class PlaceOrder(BaseModel):
     ORDER_TYPE_CHOICES =[
         ('LMT', 'LMT'),
         ('MKT', 'MKT'),
+        ('STP', 'STP')
     ]
     SIDE_CHOICES = [
         ('BUY', 'BUY'),
@@ -115,18 +118,18 @@ class PlaceOrder(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete= models.CASCADE)
     accountId = models.CharField(max_length=100)
     conid = models.IntegerField()
+    optionType = models.CharField(max_length=10)
     orderType = models.CharField(max_length=4, choices=ORDER_TYPE_CHOICES)
+    customer_order_id = models.CharField(max_length=100)
     price = models.FloatField(blank=True, null=True)
     side = models.CharField(max_length=4, choices=SIDE_CHOICES)
     tif = models.CharField(max_length=4, choices=TIF_CHOICES)
     quantity = models.IntegerField()
-    exp_date = models.CharField(max_length=8, blank=True, null=True)
-    exp_time = models.CharField(max_length=8, blank=True, null=True)
-
     limit_sell = models.FloatField(blank=True, null=True)
-    limit_buy = models.FloatField(blank=True, null=True)
     stop_loss = models.FloatField(blank=True, null=True)
     take_profit = models.FloatField(blank=True, null=True)
+    order_api_response = models.JSONField(blank=True, null=True)
+    is_deleted = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"

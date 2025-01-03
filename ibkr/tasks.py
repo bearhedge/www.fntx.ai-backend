@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta, datetime
 
 import requests
@@ -5,16 +6,18 @@ import requests
 
 from celery import shared_task
 from django.conf import settings
+from django.utils.timezone import now
 from django_celery_beat.models import PeriodicTask
 
+from accounts.models import CustomUser
 from core.celery_response import log_task_status
-from core.exceptions import IBKRValueError
+from core.exceptions import IBKRValueError, IBKRAppError
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TimerData, Strikes
-from ibkr.utils import calculate_strike_range
+from ibkr.utils import calculate_strike_range, save_order, generate_customer_order_id
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, name="")
 def tickle_ibkr_session(self, data=None):
     """
     Task to hit the IBKR tickle API every 2 minutes to maintain the session.
@@ -49,7 +52,7 @@ def tickle_ibkr_session(self, data=None):
         raise
 
 @shared_task(bind=True)
-def update_timer(self, timer_id):
+def update_timer(self, timer_id, task_id):
     task_name = "update_timer"
     try:
         # Perform the task logic
@@ -62,11 +65,16 @@ def update_timer(self, timer_id):
             current_datetime = datetime.combine(datetime.today(), timer_start_time)
             updated_datetime = current_datetime + timedelta(minutes=1)
             timer.start_time = updated_datetime.time()
+            timer.place_order = "P"
             timer.save()
             success_details = log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
         else:
-            timer.place_order = False
+            timer.place_order = "N"
             timer.save()
+
+            task = PeriodicTask.objects.filter(id-task_id).first()
+            task.enabled = False
+            task.save()
             success_details = log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
         self.update_state(state="SUCCESS", meta=success_details)
 
@@ -74,14 +82,6 @@ def update_timer(self, timer_id):
         error_details = log_task_status(task_name, exception=e, additional_data={"timer_id": timer_id})
         self.update_state(state="FAILURE", meta=error_details)
         raise
-
-
-# @shared_task
-# def fetch_and_validate_strikes(contract_id):
-#     chain(
-#         fetch_and_save_strikes.s(contract_id),
-#         validate_strikes.s(contract_id).set(immutable=True)
-#     )()
 
 
 @shared_task(bind=True)
@@ -121,6 +121,160 @@ def fetch_and_save_strikes(self, contract_id, user_id, month):
             )
     success_details = log_task_status(task_name, message="Strikes fetched and saved", additional_data={"contract_id": contract_id})
     self.update_state(state="SUCCESS", meta=success_details)
+
+
+@shared_task(bind=True)
+def place_orders_task(self, user_id, data):
+    task_name = "place_orders_task"
+    data = json.loads(data)
+    ibkr = IBKRBase()
+    account_data = ibkr.brokerage_accounts()
+    account = None
+    if account_data.get('success'):
+        accounts = account_data.get('data', {}).get("accounts")
+
+        if accounts:
+            # Fetch the first ID of the account
+            account = accounts[0]
+
+    user_obj = CustomUser.objects.filter(id=user_id).first()
+    timer_obj = TimerData.objects.filter(user=user_obj, created_at__date=now().date()).first()
+    save_order_data = {"user": user_obj, "accountId": account}
+
+    for obj in data:
+        # Place Sell Order
+        customer_order_id = generate_customer_order_id()
+        sell_order_data = {"orders": [{
+                "acctId": account,
+                "conid": obj.get('conid'),
+                "manualIndicator": True,
+                "orderType": "LMT",
+                "price": obj.get("price"),
+                "side": "SELL",
+                "tif": "DAY",
+                "quantity": obj.get('quantity'),
+                "cOID": customer_order_id
+            }]
+        }
+        print(sell_order_data)
+        print("#1" * 10)
+        sell_order_response = ibkr.placeOrder(account, sell_order_data)
+        if not handle_order_response(self, task_name, ibkr, sell_order_response, obj, save_order_data, "SELL", customer_order_id):
+            timer_obj.place_order = "D"
+            timer_obj.save()
+            return
+
+        # Place Stop Loss Buy Order
+        customer_order_id = generate_customer_order_id()
+        stop_loss_price = obj.get("price") * (obj.get("stop_loss") / 100)
+        stop_loss_order_data = sell_order_data.copy()
+        stop_loss_order_data["orders"][0].update({
+            "price": round(stop_loss_price, 2),
+            "side": "BUY",
+            "orderType": "STP",
+            "cOID": customer_order_id
+        })
+
+        stop_loss_response = ibkr.placeOrder(account, stop_loss_order_data)
+        if not handle_order_response(self, task_name, ibkr, stop_loss_response, obj, save_order_data, "BUY", customer_order_id,
+                                     stop_loss=True):
+            timer_obj.place_order = "D"
+            timer_obj.save()
+            return
+
+        # Place Take Profit Buy Order
+        customer_order_id = generate_customer_order_id()
+
+        take_profit_price = obj.get('price') - (obj.get("price") / 100 * obj.get('take_profit'))
+        take_profit_order_data = sell_order_data.copy()
+        take_profit_order_data["orders"][0].update({
+            "price": round(take_profit_price, 2),
+            "side": "BUY",
+            "orderType": "LMT",
+            "cOID": customer_order_id
+        })
+        print(take_profit_order_data)
+        print("#3" * 10)
+        take_profit_response = ibkr.placeOrder(account, take_profit_order_data)
+        if not handle_order_response(self, task_name, ibkr, take_profit_response, obj, save_order_data, "BUY", customer_order_id,
+                                     take_profit=True):
+            timer_obj.place_order = "D"
+            timer_obj.save()
+            return
+
+    success_details = log_task_status(task_name, message="Order Placed and saved in db.")
+    self.update_state(state="SUCCESS", meta=success_details)
+
+
+def handle_order_response(self, task_name, ibkr, order_response, obj, save_order_data, side, customer_order_id, stop_loss=False,
+                          take_profit=False):
+    """
+    Handles order API response, saves the order data, and confirms order if needed.
+    """
+    print(order_response)
+    print("$" * 100)
+    if order_response.get("success"):
+        error = order_response.get("data")
+        if not error:
+            order_id = order_response.get("data", [])[0].get("id")
+            reply_id = order_response.get("data", [])[0].get("replyId")
+            while reply_id:
+                # Attempt to confirm the order
+                confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
+
+                if not confirm_response.get("success"):
+                    error_details = log_task_status(
+                        task_name,
+                        message=f"Failed to confirm order reply for {side} order.",
+                        additional_data={"replyId": reply_id}
+                    )
+                    self.update_state(state="FAILURE", meta=error_details)
+                    return False
+
+                # Check if the order_id is present after confirmation
+                order_id = confirm_response.get("data", {})[0].get("id")
+                if order_id:
+                    reply_id = None
+                    break  # Order confirmed, exit loop
+
+                reply_id = confirm_response.get("data", {})[0].get("replyId")
+
+        # Save the order data
+        save_order_data.update({
+            'conid': obj.get('conid'),
+            'optionType': obj.get('optionType'),
+            'orderType': 'STP' if stop_loss else 'LMT',
+            'price': obj.get("price"),
+            'side': side,
+            'tif': 'DAY',
+            'quantity': obj.get('quantity'),
+            'limit_sell': obj.get('limit_sell', ''),
+            'stop_loss': obj.get('stop_loss', ''),
+            'take_profit': obj.get('take_profit', ''),
+            'order_api_response': order_response.get('data')[0] if not error else error,
+            'customer_order_id': customer_order_id
+        })
+        try:
+            save_order(save_order_data)
+        except IBKRAppError as e:
+            error_details = log_task_status(
+                task_name,
+                exception=e,
+                message="Unable to save order",
+                additional_data={"orderType": side}
+            )
+            self.update_state(state="FAILURE", meta=error_details)
+            return False
+    else:
+        error_details = log_task_status(
+            task_name,
+            message=f"Failed to place {side} order.",
+            additional_data={"orderType": side}
+        )
+        self.update_state(state="FAILURE", meta=error_details)
+        return False
+
+    return True
 
 
 def _disable_task_and_update_status(onboarding_obj, task_id, task_name):

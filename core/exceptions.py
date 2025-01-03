@@ -14,3 +14,11 @@ class IBKRValueError(Exception):
 
     def __str__(self):
         return self.message
+
+
+class IBKRAppError(Exception):
+    """Base class for all application-specific exceptions."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)

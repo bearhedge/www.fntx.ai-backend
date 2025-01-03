@@ -7,7 +7,7 @@ router = DefaultRouter()
 router.register("onboarding", OnboardingView, "onboarding")
 router.register("instruments", InstrumentListCreateView, "instruments")
 router.register("timer", TimerDataViewSet, "timer")
-router.register("place-order",PlaceOrderView,"place-order")
+router.register("place-order", PlaceOrderView,"place-order")
 router.register("system-data", SystemDataView, "system-data")
 
 urlpatterns = [
