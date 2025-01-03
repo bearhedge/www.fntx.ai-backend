@@ -79,7 +79,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                         valid_contract = True
                         break
             if not valid_contract:
-                raise serializers.ValidationError({"error": "Cannot use this contract_id as it is not for options trading."})
+                raise serializers.ValidationError({"error": "Cannot use this Contract ID as it is not for options trading."})
 
             if contract_id:
                 validated_data['contract_id'] = contract_id
@@ -128,7 +128,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                         break
 
             if not valid_contract:
-                raise serializers.ValidationError({"error": "Cannot use this contract_id as it is not for options trading"})
+                raise serializers.ValidationError({"error": "Cannot use this Contract ID as it is not for options trading"})
 
             # Update the instance with the new contract_id
             if contract_id and contract_id != instance.contract_id:

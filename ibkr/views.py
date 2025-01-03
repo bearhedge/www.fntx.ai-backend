@@ -403,6 +403,16 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
         return self.serializer_class
 
     def create(self, request):
+        authentication = self.auth_status()
+        if not authentication.get('success'):
+            authenticated = False
+        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+            authenticated = False
+        else:
+            authenticated = True
+        if not authenticated:
+            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
+                            status=status.HTTP_400_BAD_REQUEST)
         orders_data = request.data.get('order')
         if not isinstance(orders_data, list):
             return Response({"error": "Data should be an array of orders."}, status=status.HTTP_400_BAD_REQUEST)

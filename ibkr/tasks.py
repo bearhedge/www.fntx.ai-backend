@@ -58,7 +58,11 @@ def update_timer(self, timer_id, task_id):
         # Perform the task logic
         timer = TimerData.objects.get(id=timer_id)
         if timer.timer_value > 0:
-            timer.timer_value -= 1
+            timer_value = timer.timer_value
+            if isinstance(timer_value, str):
+                timer_value = int(timer_value)
+            timer_value -= 1
+            timer.timer_value = timer_value
 
             # increase time by 1 minute
             timer_start_time = timer.start_time
@@ -149,7 +153,7 @@ def place_orders_task(self, user_id, data):
                 "conid": obj.get('conid'),
                 "manualIndicator": True,
                 "orderType": "LMT",
-                "price": obj.get("price"),
+                "price": obj.get("price") * obj.get('quantity'),
                 "side": "SELL",
                 "tif": "DAY",
                 "quantity": obj.get('quantity'),
@@ -169,7 +173,7 @@ def place_orders_task(self, user_id, data):
         stop_loss_price = obj.get("price") * (obj.get("stop_loss") / 100)
         stop_loss_order_data = sell_order_data.copy()
         stop_loss_order_data["orders"][0].update({
-            "price": round(stop_loss_price, 2),
+            "price": round(stop_loss_price, 2) * obj.get('quantity'),
             "side": "BUY",
             "orderType": "STP",
             "cOID": customer_order_id
@@ -188,7 +192,7 @@ def place_orders_task(self, user_id, data):
         take_profit_price = obj.get('price') - (obj.get("price") / 100 * obj.get('take_profit'))
         take_profit_order_data = sell_order_data.copy()
         take_profit_order_data["orders"][0].update({
-            "price": round(take_profit_price, 2),
+            "price": round(take_profit_price, 2) * obj.get('quantity'),
             "side": "BUY",
             "orderType": "LMT",
             "cOID": customer_order_id
