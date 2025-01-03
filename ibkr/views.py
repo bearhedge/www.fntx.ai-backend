@@ -154,6 +154,16 @@ class SystemDataView(viewsets.ModelViewSet):
         return self.serializer_list_class
 
     def list(self, request, *args, **kwargs):
+        ibkr = IBKRBase()
+        authentication = ibkr.auth_status()
+        if not authentication.get('success'):
+            authenticated = False
+        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+            authenticated = False
+        else:
+            authenticated = True
+        if not authenticated:
+            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."}, status=status.HTTP_400_BAD_REQUEST)
         queryset = self.get_queryset().filter(user=request.user, created_at__date=now().date()).first()
         if not queryset:
             return Response({"error": "Not found."}, status=status.HTTP_200_OK)
