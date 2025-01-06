@@ -34,6 +34,7 @@ def tickle_ibkr_session(self, data=None):
 
     ibkr = IBKRBase()
     response = ibkr.auth_status()
+    print(response, "===================")
     if not response.get('success'):
         return _disable_task_and_update_status(onboarding_obj, task_id, task_name)
     elif response.get('success') and not response.get('data').get('authenticated'):
@@ -69,14 +70,11 @@ def update_timer(self, timer_id, task_id):
             current_datetime = datetime.combine(datetime.today(), timer_start_time)
             updated_datetime = current_datetime + timedelta(minutes=1)
             timer.start_time = updated_datetime.time()
-            timer.place_order = "P"
+            timer.place_order = "P" if timer_value != 0 else "N"
             timer.save()
             success_details = log_task_status(task_name, message="Timer updated successfully", additional_data={"timer_id": timer_id})
         else:
-            timer.place_order = "N"
-            timer.save()
-
-            task = PeriodicTask.objects.filter(id-task_id).first()
+            task = PeriodicTask.objects.filter(id=task_id).first()
             task.enabled = False
             task.save()
             success_details = log_task_status(task_name, message="Timer completed", additional_data={"timer_id": timer_id})
@@ -110,6 +108,8 @@ def fetch_and_save_strikes(self, contract_id, user_id, month):
         self.update_state(state="FAILURE", meta=error_details)
         raise
 
+    # delete all strikes of this contract id and then save again.
+    Strikes.objects.filter(contract_id=contract_id).delete()
 
     for key, strikes in validated_strikes.items():
         for strike in strikes:
@@ -164,9 +164,10 @@ def place_orders_task(self, user_id, data):
         print("#1" * 10)
         sell_order_response = ibkr.placeOrder(account, sell_order_data)
         if not handle_order_response(self, task_name, ibkr, sell_order_response, obj, save_order_data, "SELL", customer_order_id):
-            timer_obj.place_order = "D"
-            timer_obj.save()
             return
+
+        timer_obj.place_order = "D"
+        timer_obj.save()
 
         # Place Stop Loss Buy Order
         customer_order_id = generate_customer_order_id()
@@ -182,8 +183,7 @@ def place_orders_task(self, user_id, data):
         stop_loss_response = ibkr.placeOrder(account, stop_loss_order_data)
         if not handle_order_response(self, task_name, ibkr, stop_loss_response, obj, save_order_data, "BUY", customer_order_id,
                                      stop_loss=True):
-            timer_obj.place_order = "D"
-            timer_obj.save()
+
             return
 
         # Place Take Profit Buy Order
@@ -202,9 +202,9 @@ def place_orders_task(self, user_id, data):
         take_profit_response = ibkr.placeOrder(account, take_profit_order_data)
         if not handle_order_response(self, task_name, ibkr, take_profit_response, obj, save_order_data, "BUY", customer_order_id,
                                      take_profit=True):
-            timer_obj.place_order = "D"
-            timer_obj.save()
+
             return
+
 
     success_details = log_task_status(task_name, message="Order Placed and saved in db.")
     self.update_state(state="SUCCESS", meta=success_details)

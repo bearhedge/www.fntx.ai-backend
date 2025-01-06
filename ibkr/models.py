@@ -92,7 +92,7 @@ class TimerData(BaseModel):
     place_order = models.CharField(max_length=5, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.timer_value}-{self.user}-{self.created_at}"
+        return f"{self.timer_value}-{self.user.email}-{self.created_at}"
 
 
 class PlaceOrder(BaseModel):

@@ -2,10 +2,18 @@ import requests
 import asyncio
 import json
 
+from urllib.parse import parse_qs
+
+from channels.db import database_sync_to_async
+from django.contrib.auth.models import AnonymousUser
+from django.utils.timezone import now
+
+
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+from accounts.models import CustomUser
 from core.views import IBKRBase
-from .models import Strikes
+from .models import Strikes, TimerData
 
 from datetime import datetime
 from asgiref.sync import sync_to_async
@@ -15,7 +23,30 @@ class StrikesConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         self.ibkr = IBKRBase()
         self.strike_data_list = []
+        self.place_order_value = None
+        self.userObj = None
+        self.keep_running = False
         super().__init__(*args, **kwargs)
+
+    async def connect(self):
+        # Extract token from query parameters
+        query_params = parse_qs(self.scope["query_string"].decode())
+        user_id = query_params.get("user_id", [None])[0]
+        if not user_id:
+            await self.send(text_data=json.dumps({"error": "User is not authenticated.", "authentication": False}))
+            await self.close()
+
+        self.userObj = await self.get_user_from_token(user_id)
+        await self.accept()
+        self.keep_running = True
+        asyncio.create_task(self.send_place_order_updates())
+
+
+
+    async def disconnect(self, close_code):
+        # Stop the background task when the WebSocket disconnects
+        self.keep_running = False
+
 
     async def receive(self, text_data):
         # Parse received JSON data
@@ -47,6 +78,16 @@ class StrikesConsumer(AsyncWebsocketConsumer):
 
         # Schedule periodic updates for live data
         asyncio.create_task(self.update_live_data())
+
+    @database_sync_to_async
+    def get_user_from_token(self, user_id):
+        """
+        Decode the JWT token and return the authenticated user.
+        """
+        try:
+            return CustomUser.objects.get(id=user_id)
+        except Exception:
+            return AnonymousUser()
 
     def group_strikes_by_price(self, strikes):
         """
@@ -115,6 +156,38 @@ class StrikesConsumer(AsyncWebsocketConsumer):
 
         return None
 
+    # async def update_live_data(self):
+    #     """
+    #     Periodically update live data for all processed strikes.
+    #     """
+    #     authentication = self.ibkr.auth_status()
+    #     if not authentication.get("success"):
+    #         await self.send(
+    #             text_data=json.dumps(
+    #                 {"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
+    #         await self.close()
+    #     while True:
+    #         conids = [data["call"]["conid"] for data in self.strike_data_list if data.get("call")]
+    #         conids += [data["put"]["conid"] for data in self.strike_data_list if data.get("put")]
+    #
+    #         live_data_response = await self.fetch_batch_live_data(conids)
+    #
+    #         if live_data_response:
+    #             for strike_entry in self.strike_data_list:
+    #                 for option_type in ["call", "put"]:
+    #                     option_data = strike_entry.get(option_type)
+    #                     if option_data and option_data.get("conid"):
+    #                         live_data = next(
+    #                             (data for data in live_data_response if data["conid"] == option_data["conid"]), None)
+    #                         option_data["live_data"] = live_data if live_data else []
+    #
+    #             await self.send(text_data=json.dumps({
+    #                 "option_chain_data": self.strike_data_list, "error": None, "authentication": True
+    #             }))
+    #
+    #         # Wait for 1 second before fetching live data again
+    #         await asyncio.sleep(1)
+
     async def update_live_data(self):
         """
         Periodically update live data for all processed strikes.
@@ -133,7 +206,29 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                 await self.send(text_data=json.dumps({
                     "option_chain_data": self.strike_data_list, "error": None, "authentication": True
                 }))
+                await self.close()
 
-            # Wait for a few seconds before fetching live data again
+            # Wait for 1 second before fetching live data again
             await asyncio.sleep(1)
+
+    async def send_place_order_updates(self):
+        while self.keep_running:
+            timer_data = await self.fetch_timer_data()
+
+            place_order_value = None
+            if timer_data:
+                timer_data_obj = timer_data[0]
+                place_order_value = timer_data_obj.place_order
+
+            await self.send(text_data=json.dumps({
+                "place_order": place_order_value,
+                "authentication": True
+            }))
+
+            await asyncio.sleep(2)
+
+    @sync_to_async
+    def fetch_timer_data(self):
+        # This method runs in a synchronous thread to avoid async ORM conflicts
+        return list(TimerData.objects.filter(user=self.userObj, created_at__date=now().date()))
 
