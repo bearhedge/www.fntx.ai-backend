@@ -175,9 +175,10 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                         print(live_data)
                         print("live_data" * 10)
                         option_data["live_data"] = live_data if live_data else []
-                        await self.send(text_data=json.dumps({
-                            "option_chain_data": self.strike_data_list, "error": None, "authentication": True
-                        }))
+                await self.send(text_data=json.dumps({
+                    "option_chain_data": self.strike_data_list, "error": None, "authentication": True
+                }))
+                await asyncio.sleep(0)
 
             # Wait for 1 second before fetching live data again
             await asyncio.sleep(1)
