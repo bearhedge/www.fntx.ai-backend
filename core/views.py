@@ -160,7 +160,6 @@ class IBKRBase:
         url = f'{self.ibkr_base_url}/iserver/secdef/info?conid={conid}&secType=OPT&month={month}&strike={strike}&right={right}'
         try:
             response = requests.get(url, verify=False)
-            print(response.content)
             if response.status_code == 200:
                 data = response.json()
                 if data:

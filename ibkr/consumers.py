@@ -156,38 +156,6 @@ class StrikesConsumer(AsyncWebsocketConsumer):
 
         return None
 
-    # async def update_live_data(self):
-    #     """
-    #     Periodically update live data for all processed strikes.
-    #     """
-    #     authentication = self.ibkr.auth_status()
-    #     if not authentication.get("success"):
-    #         await self.send(
-    #             text_data=json.dumps(
-    #                 {"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
-    #         await self.close()
-    #     while True:
-    #         conids = [data["call"]["conid"] for data in self.strike_data_list if data.get("call")]
-    #         conids += [data["put"]["conid"] for data in self.strike_data_list if data.get("put")]
-    #
-    #         live_data_response = await self.fetch_batch_live_data(conids)
-    #
-    #         if live_data_response:
-    #             for strike_entry in self.strike_data_list:
-    #                 for option_type in ["call", "put"]:
-    #                     option_data = strike_entry.get(option_type)
-    #                     if option_data and option_data.get("conid"):
-    #                         live_data = next(
-    #                             (data for data in live_data_response if data["conid"] == option_data["conid"]), None)
-    #                         option_data["live_data"] = live_data if live_data else []
-    #
-    #             await self.send(text_data=json.dumps({
-    #                 "option_chain_data": self.strike_data_list, "error": None, "authentication": True
-    #             }))
-    #
-    #         # Wait for 1 second before fetching live data again
-    #         await asyncio.sleep(1)
-
     async def update_live_data(self):
         """
         Periodically update live data for all processed strikes.
@@ -200,8 +168,12 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             for strike_entry in self.strike_data_list:
                 for option_type in ["call", "put"]:
                     option_data = strike_entry.get(option_type)
+                    print("option_data" * 10)
+                    print(option_data)
                     if option_data and option_data.get("conid"):
                         live_data = await self.fetch_live_data(option_data["conid"])
+                        print(live_data)
+                        print("live_data" * 10)
                         option_data["live_data"] = live_data if live_data else []
                 await self.send(text_data=json.dumps({
                     "option_chain_data": self.strike_data_list, "error": None, "authentication": True
