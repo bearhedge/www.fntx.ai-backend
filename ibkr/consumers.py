@@ -206,7 +206,6 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                 await self.send(text_data=json.dumps({
                     "option_chain_data": self.strike_data_list, "error": None, "authentication": True
                 }))
-                await self.close()
 
             # Wait for 1 second before fetching live data again
             await asyncio.sleep(1)
