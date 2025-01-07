@@ -98,7 +98,7 @@ class IBKRBase:
     def replyOrder(self, reply_id, json_content):
         try:
             url = f"{self.ibkr_base_url}/iserver/reply/{reply_id}"
-            response = requests.post(url, json=[json_content], verify=False)
+            response = requests.post(url, json=json_content, verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:

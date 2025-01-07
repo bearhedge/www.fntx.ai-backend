@@ -220,8 +220,8 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     if order_response.get("success"):
         error = order_response.get("data")
         if not error:
-            order_id = order_response.get("data", [])[0].get("id")
-            reply_id = order_response.get("data", [])[0].get("replyId")
+            order_id = order_response.get("data", [])[0].get("order_id")
+            reply_id = order_response.get("data", [])[0].get("id")
             while reply_id:
                 # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
@@ -236,12 +236,12 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     return False
 
                 # Check if the order_id is present after confirmation
-                order_id = confirm_response.get("data", {})[0].get("id")
+                order_id = confirm_response.get("data", {})[0].get("order_id")
                 if order_id:
                     reply_id = None
                     break  # Order confirmed, exit loop
 
-                reply_id = confirm_response.get("data", {})[0].get("replyId")
+                reply_id = confirm_response.get("data", {})[0].get("id")
 
         # Save the order data
         save_order_data.update({
