@@ -215,19 +215,20 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     """
     Handles order API response, saves the order data, and confirms order if needed.
     """
-    print(order_response)
-    print("$" * 100)
+
     if order_response.get("success"):
         response = None
         error = order_response.get("data")
         if not error:
             order_id = order_response.get("data", [])[0].get("order_id")
             reply_id = order_response.get("data", [])[0].get("id")
+            print(reply_id)
+            print("#" * 100)
             response = order_response
             while reply_id:
                 # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
-
+                print(confirm_response, "=====================")
                 if not confirm_response.get("success"):
                     error_details = log_task_status(
                         task_name,
@@ -238,8 +239,8 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     return False
 
                 # Check if the order_id is present after confirmation
-                order_id = confirm_response.get("data", {})[0].get("order_id")
-                if order_id:
+                order_confirmed_id = confirm_response.get("data", {})[0].get("order_id")
+                if order_confirmed_id:
                     reply_id = None
                     response = confirm_response
                     break  # Order confirmed, exit loop
