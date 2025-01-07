@@ -218,10 +218,12 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     print(order_response)
     print("$" * 100)
     if order_response.get("success"):
+        response = None
         error = order_response.get("data")
         if not error:
             order_id = order_response.get("data", [])[0].get("order_id")
             reply_id = order_response.get("data", [])[0].get("id")
+            response = order_response
             while reply_id:
                 # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
@@ -239,6 +241,7 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                 order_id = confirm_response.get("data", {})[0].get("order_id")
                 if order_id:
                     reply_id = None
+                    response = confirm_response
                     break  # Order confirmed, exit loop
 
                 reply_id = confirm_response.get("data", {})[0].get("id")
@@ -255,7 +258,7 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
             'limit_sell': obj.get('limit_sell', ''),
             'stop_loss': obj.get('stop_loss', ''),
             'take_profit': obj.get('take_profit', ''),
-            'order_api_response': order_response.get('data')[0] if not error else error,
+            'order_api_response': response if not error else error,
             'customer_order_id': customer_order_id
         })
         try:
