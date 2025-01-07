@@ -88,7 +88,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 task_name = f"Fetch and Validate Strikes for {contract_id} - {user} - {current_date}"
 
                 schedule, _ = IntervalSchedule.objects.get_or_create(
-                    every=3,
+                    every=1,
                     period=IntervalSchedule.MINUTES
                 )
 
