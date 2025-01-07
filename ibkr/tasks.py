@@ -218,7 +218,7 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
 
     if order_response.get("success"):
         response = None
-        error = order_response.get("data")
+        error = order_response.get("data").get("error", '')
         if not error:
             order_id = order_response.get("data", [])[0].get("order_id")
             reply_id = order_response.get("data", [])[0].get("id")
