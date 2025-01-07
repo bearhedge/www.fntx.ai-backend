@@ -218,38 +218,32 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
 
     if order_response.get("success"):
         response = None
-        data = order_response.get("data")
-        if isinstance(data, list):
-            error = None
-        else:
-            error = data.get("error")
-        if not error:
-            order_id = order_response.get("data", [])[0].get("order_id")
-            reply_id = order_response.get("data", [])[0].get("id")
-            print(reply_id)
-            print("#" * 100)
-            response = order_response
-            while reply_id:
-                # Attempt to confirm the order
-                confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
-                print(confirm_response, "=====================")
-                if not confirm_response.get("success"):
-                    error_details = log_task_status(
-                        task_name,
-                        message=f"Failed to confirm order reply for {side} order.",
-                        additional_data={"replyId": reply_id}
-                    )
-                    self.update_state(state="FAILURE", meta=error_details)
-                    return False
+        order_id = order_response.get("data", [])[0].get("order_id")
+        reply_id = order_response.get("data", [])[0].get("id")
+        print(reply_id)
+        print("#" * 100)
+        response = order_response
+        while reply_id:
+            # Attempt to confirm the order
+            confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
+            print(confirm_response, "=====================")
+            if not confirm_response.get("success"):
+                error_details = log_task_status(
+                    task_name,
+                    message=f"Failed to confirm order reply for {side} order.",
+                    additional_data={"replyId": reply_id}
+                )
+                self.update_state(state="FAILURE", meta=error_details)
+                return False
 
-                # Check if the order_id is present after confirmation
-                order_confirmed_id = confirm_response.get("data", {})[0].get("order_id")
-                if order_confirmed_id:
-                    reply_id = None
-                    response = confirm_response
-                    break  # Order confirmed, exit loop
+            # Check if the order_id is present after confirmation
+            order_confirmed_id = confirm_response.get("data", {})[0].get("order_id")
+            if order_confirmed_id:
+                reply_id = None
+                response = confirm_response
+                break  # Order confirmed, exit loop
 
-                reply_id = confirm_response.get("data", {})[0].get("id")
+            reply_id = confirm_response.get("data", {})[0].get("id")
 
         # Save the order data
         save_order_data.update({
