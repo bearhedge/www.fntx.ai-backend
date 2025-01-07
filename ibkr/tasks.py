@@ -221,6 +221,7 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
         data =  order_response.get("data")
         print(data)
         print("$" * 100)
+        print(type(data))
         if isinstance(data, list):
 
             order_id = order_response.get("data", [])[0].get("order_id")
