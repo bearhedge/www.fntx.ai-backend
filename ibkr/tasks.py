@@ -218,12 +218,12 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
 
     if order_response.get("success"):
         response = None
+        error = None
         data =  order_response.get("data")
         print(data)
         print("$" * 100)
         print(type(data))
         if isinstance(data, list):
-
             order_id = order_response.get("data", [])[0].get("order_id")
             reply_id = order_response.get("data", [])[0].get("id")
             print(reply_id)
@@ -250,6 +250,9 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     break  # Order confirmed, exit loop
 
                 reply_id = confirm_response.get("data", {})[0].get("id")
+        else:
+            error = data.get("error")
+
 
         # Save the order data
         save_order_data.update({

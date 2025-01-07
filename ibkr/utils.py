@@ -65,11 +65,11 @@ def generate_customer_order_id():
 
     if last_order:
         # Extract numeric part and increment
-        prefix, order_num = last_order.split('-live-orders-')
+        prefix, order_num = last_order.split('-id-')
         next_order_num = int(order_num) + 1
-        new_order_id = f"{prefix}-live-orders-{next_order_num}"
+        new_order_id = f"{prefix}-id-{next_order_num}"
     else:
-        new_order_id = "FNTX-live-orders-1"
+        new_order_id = "order-id-1"
 
     return new_order_id
 
