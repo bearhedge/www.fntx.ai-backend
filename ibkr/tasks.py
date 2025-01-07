@@ -218,7 +218,11 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
 
     if order_response.get("success"):
         response = None
-        error = order_response.get("data").get("error", '')
+        data = order_response.get("data")
+        if isinstance(data, list):
+            error = None
+        else:
+            error = data.get("error")
         if not error:
             order_id = order_response.get("data", [])[0].get("order_id")
             reply_id = order_response.get("data", [])[0].get("id")
