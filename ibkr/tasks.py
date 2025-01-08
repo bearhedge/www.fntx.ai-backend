@@ -110,7 +110,8 @@ def fetch_and_save_strikes(self, contract_id, user_id, month):
 
     # delete all strikes of this contract id and then save again.
     Strikes.objects.filter(contract_id=contract_id).delete()
-
+    print(validated_strikes)
+    print("changed_strikes" * 5)
     for key, strikes in validated_strikes.items():
         for strike in strikes:
             # Update if exists or create otherwise
@@ -153,7 +154,7 @@ def place_orders_task(self, user_id, data):
                 "conid": obj.get('conid'),
                 "manualIndicator": True,
                 "orderType": "LMT",
-                "price": obj.get("price") * obj.get('quantity'),
+                "price": obj.get("limit_sell") * obj.get('quantity'),
                 "side": "SELL",
                 "tif": "DAY",
                 "quantity": obj.get('quantity'),
@@ -171,7 +172,7 @@ def place_orders_task(self, user_id, data):
 
         # Place Stop Loss Buy Order
         customer_order_id = generate_customer_order_id()
-        stop_loss_price = obj.get("price") * (obj.get("stop_loss") / 100)
+        stop_loss_price = obj.get("price") + obj.get("price") * (obj.get("stop_loss") / 100)
         stop_loss_order_data = sell_order_data.copy()
         stop_loss_order_data["orders"][0].update({
             "price": round(stop_loss_price, 2) * obj.get('quantity'),
@@ -189,7 +190,7 @@ def place_orders_task(self, user_id, data):
         # Place Take Profit Buy Order
         customer_order_id = generate_customer_order_id()
 
-        take_profit_price = obj.get('price') - (obj.get("price") / 100 * obj.get('take_profit'))
+        take_profit_price = obj.get('price') - (obj.get('price') - (obj.get('price')/100 * obj.get("take_profit")))
         take_profit_order_data = sell_order_data.copy()
         take_profit_order_data["orders"][0].update({
             "price": round(take_profit_price, 2) * obj.get('quantity'),
