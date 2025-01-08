@@ -110,8 +110,6 @@ def fetch_and_save_strikes(self, contract_id, user_id, month):
 
     # delete all strikes of this contract id and then save again.
     Strikes.objects.filter(contract_id=contract_id).delete()
-    print(validated_strikes)
-    print("changed_strikes" * 5)
     for key, strikes in validated_strikes.items():
         for strike in strikes:
             # Update if exists or create otherwise

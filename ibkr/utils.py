@@ -42,8 +42,11 @@ def calculate_strike_range(strikes_response, last_day_price):
     call_strikes = [strike for strike in all_call_strikes if strike <= lower_bound ]
     put_strikes = [strike for strike in all_put_strikes if  strike >= upper_bound]
 
-    data['call'] = sorted(call_strikes, reverse=True)
-    data['put'] = sorted(put_strikes)
+    call_strikes_sorted = sorted(call_strikes, reverse=True)
+    put_strikes_sorted = sorted(put_strikes)
+
+    data['call'] = call_strikes_sorted[:15]
+    data['put'] = put_strikes_sorted[:15]
     return data
 
 
