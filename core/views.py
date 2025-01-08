@@ -84,6 +84,19 @@ class IBKRBase:
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
+    def historical_data(self, conId, bar, period=None):
+        if not period:
+            period = "1w"
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/iserver/marketdata/history?conid={conId}&period={period}&bar={bar},", verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code, "error": response.content()}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
+
     def placeOrder(self, account, order_data):
         try:
             url = f"{self.ibkr_base_url}/iserver/account/{account}/orders"

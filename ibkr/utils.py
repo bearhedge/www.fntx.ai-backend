@@ -80,3 +80,33 @@ def generate_customer_order_id():
         new_order_id = "order-id-1"
 
     return new_order_id
+
+def transform_ibkr_data(api_response):
+    data = api_response.pop('data', [])
+    transformed_data = []
+
+    for index, bar in enumerate(data):
+        timestamp_ms = bar["t"]
+        timestamp_s = timestamp_ms / 1000
+        iso_date = datetime.datetime.utcfromtimestamp(timestamp_s).isoformat() + "Z"
+
+        transformed_data.append({
+            "date": iso_date,
+            "open": round(bar["o"], 2),
+            "high": round(bar["h"], 2),
+            "low": round(bar["l"], 2),
+            "close": round(bar["c"], 2),
+            "volume": round(bar["v"] * api_response.get("volumeFactor", 1)),
+            "split": "",
+            "dividend": "",
+            "absoluteChange": "",
+            "percentChange": "",
+            "idx": {
+                "index": index,
+                "level": 12,
+                "date": iso_date
+            }
+        })
+    api_response['data'] = transformed_data
+
+    return api_response

@@ -20,7 +20,7 @@ from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData,
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
     TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
     SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer, PlaceOrderListSerializer
-from ibkr.utils import fetch_bounds_from_json
+from ibkr.utils import fetch_bounds_from_json, transform_ibkr_data
 from ibkr.tasks import place_orders_task
 
 
@@ -392,18 +392,31 @@ class RangeDataView(APIView, IBKRBase):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema(tags=["IBKR"])
-class GetHistoryDataView(APIView):
+@extend_schema(tags=["History Data"])
+class GetHistoryDataView(APIView, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = HistoryDataSerializer
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
+
     def post(self, request):
+        bound_data = None
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             conid = serializer.validated_data['conid']
-            period = serializer.validated_data['period']
-            history_data = serializer.get_market_data(conid, period)
-            return Response(history_data, status=status.HTTP_200_OK)
+            period = serializer.validated_data.get('period')
+            bar = serializer.validated_data['bar']
+            history_data = self.historical_data(conid, bar, period)
+            if history_data.get('success'):
+                bound_data = fetch_bounds_from_json(history_data.get('data'))
+            else:
+                return Response({"error": history_data.get('error')}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Transform the data to match the frontend structure
+            formatted_data = transform_ibkr_data(history_data.get('data'))
+            return Response({"history_data": formatted_data, "bound_data": bound_data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

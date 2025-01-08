@@ -214,17 +214,15 @@ class UpperLowerBoundSerializer(serializers.Serializer):
 
 
 
-class HistoryDataSerializer(serializers.Serializer, IBKRBase):
-    period = serializers.CharField()  # Positive integer for time steps
-    conid = serializers.IntegerField()  # Integer representing contract ID
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        IBKRBase.__init__(self)
+class HistoryDataSerializer(serializers.Serializer):
+    period = serializers.CharField(required=False)
+    bar = serializers.CharField()
+    conid = serializers.IntegerField()
 
     def validate(self, data):
-        data['period'] = f"{data.get('period')}"
-        data['conid'] = data.get('conid')
+        print(data)
+        if not data.get('bar') or not data.get('conid'):
+            raise serializers.ValidationError({"error": "Bar and conId are required parameter. Please make sure you send them."})
         return data
 
     def get_market_data(self, conid, period):
