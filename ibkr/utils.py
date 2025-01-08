@@ -1,3 +1,5 @@
+import datetime
+import re
 from django.db.models import Max
 
 from core.exceptions import IBKRValueError
@@ -57,20 +59,24 @@ def save_order(data_dict):
 def generate_customer_order_id():
     """
     Generates a new customer_order_id by incrementing the last saved ID in the database.
-    Format: FNTX-live-order-001
+    Format: order-id-1, order-id-2, etc.
     """
+
     last_order = PlaceOrder.objects.aggregate(
         max_id=Max('customer_order_id')
     )['max_id']
 
     if last_order:
-        # Extract numeric part and increment
-        prefix, order_num = last_order.split('-id-')
-        next_order_num = int(order_num) + 1
-        new_order_id = f"{prefix}-id-{next_order_num}"
+
+
+        match = re.search(r"^(.*?)-id-(\d+)$", last_order)
+        if match:
+            prefix, order_num = match.groups()
+            next_order_num = int(order_num) + 1
+            new_order_id = f"{prefix}-id-{next_order_num}"
+        else:
+            raise ValueError("Invalid customer_order_id format in database.")
     else:
         new_order_id = "order-id-1"
 
     return new_order_id
-
-
