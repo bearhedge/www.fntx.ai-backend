@@ -13,38 +13,31 @@ from django.utils.timezone import now
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from accounts.models import CustomUser
+from core.base_consumer import BaseConsumer
+from core.exceptions import IBKRValueError
 from core.views import IBKRBase
 from .models import Strikes, TimerData
 
 from datetime import datetime
 from asgiref.sync import sync_to_async
 
+from .utils import calculate_strike_range
 
 
-
-class StrikesConsumer(AsyncWebsocketConsumer):
+class StrikesConsumer(BaseConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.ibkr = IBKRBase()
         self.strike_data_list = []
         self.place_order_value = None
-        self.userObj = None
         self.keep_running = False
         self.send_place_order_task = None
         self.update_live_data_task = None
 
 
     async def connect(self):
-        query_params = parse_qs(self.scope["query_string"].decode())
-        user_id = query_params.get("user_id", [None])[0]
-        if not user_id:
-            await self.send(text_data=json.dumps({"error": "User is not authenticated.", "authentication": False}))
-            await self.close()
-            return
+        await super().connect()
 
-        self.userObj = await self.get_user_from_token(user_id)
-        await self.accept()
         self.keep_running = True
         self.send_place_order_task = asyncio.create_task(self.send_place_order_updates())
 
@@ -220,26 +213,134 @@ class StrikesConsumer(AsyncWebsocketConsumer):
         return list(TimerData.objects.filter(user=self.userObj, created_at__date=now().date()))
 
 
-class StreamData(AsyncWebsocketConsumer):
+class ChartsData(BaseConsumer):
     def __init__(self, *args, **kwargs):
-        self.ibkr = IBKRBase()
-        self.strike_data_list = []
-        self.place_order_value = None
-        self.userObj = None
-        self.keep_running = False
+        self.stream_data = []
+        self.contract_id = None
+        self.month = None
+        self.candle_graph_task = None
         super().__init__(*args, **kwargs)
 
-    async def connect(self):
-        # Extract token from query parameters
-        query_params = parse_qs(self.scope["query_string"].decode())
-        user_id = query_params.get("user_id", [None])[0]
-        if not user_id:
-            await self.send(text_data=json.dumps({"error": "User is not authenticated.", "authentication": False}))
-            await self.close()
+    async def receive(self, text_data):
+        # Parse received JSON data
+        data = json.loads(text_data)
+        ticker = data.get("ticker")
+        authentication = self.ibkr.auth_status()
+        if not authentication.get("success"):
+            await self.send(text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
+            return
+        if not ticker:
+            await self.send(text_data=json.dumps({"error": "ticker is a required parameter.", "authentication": True}))
+            return
 
-        self.userObj = await self.get_user_from_token(user_id)
-        await self.accept()
-        self.keep_running = True
-        asyncio.create_task(self.send_place_order_updates())
+        self.contract_id, self.month = await self.ticker_contract(ticker)
+        if not self.contract_id:
+            await self.send(text_data=json.dumps({"error": f"Unable to select contract for the selected ticker {ticker}"}))
+            return
+
+        self.candle_graph_task = asyncio.create_task(self.candle_data())
+
+    async def candle_data(self):
+
+
+
+
+class StreamOptionData(BaseConsumer):
+    def __init__(self, *args, **kwargs):
+        self.stream_data = []
+        self.contract_id = None
+        self.month = None
+        self.fetch_strikes_task = None
+        self.live_data_task = None
+        self.all_strikes = {}
+        super().__init__(*args, **kwargs)
+
+
+    async def receive(self, text_data):
+        # Parse received JSON data
+        data = json.loads(text_data)
+        ticker = data.get("ticker")
+        authentication = self.ibkr.auth_status()
+        if not authentication.get("success"):
+            await self.send(text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
+            return
+        if not ticker:
+            await self.send(text_data=json.dumps({"error": "ticker is a required parameter.", "authentication": True}))
+            return
+
+        self.contract_id, self.month = await self.ticker_contract(ticker)
+        if not self.contract_id:
+            await self.send(text_data=json.dumps({"error": f"Unable to select contract for the selected ticker {ticker}"}))
+            return
+
+        self.fetch_strikes_task = asyncio.create_task(self.contract_strikes())
+        await asyncio.sleep(1)
+
+        self.live_data_task = asyncio.create_task(self.live_data())
+
+
+
+    async def contract_strikes(self):
+        strikes_response = self.ibkr.fetch_strikes(self.contract_id, self.month)
+        last_day_price = None
+        if strikes_response.get('success'):
+            # fetch the last day price of the contract
+            last_day_price = self.ibkr.last_day_price(self.contract_id)
+            if last_day_price.get('success'):
+                try:
+                    self.all_strikes = calculate_strike_range(strikes_response.get("data"),
+                                                               last_day_price.get('last_day_price'))
+                except IBKRValueError as e:
+                    await self.send(
+                        text_data=json.dumps({"error": f"Unable to find validated strikes"}))
+                    return
+
+    async def live_data(self):
+        strikes_response = self.ibkr.fetch_strikes(self.contract_id, self.month)
+        validated_strikes = {}
+        last_day_price = None
+        if strikes_response.get('success'):
+            # fetch the last day price of the contract
+            last_day_price = self.ibkr.last_day_price(self.contract_id)
+            if last_day_price.get('success'):
+                try:
+                    validated_strikes = calculate_strike_range(strikes_response.get("data"),
+                                                               last_day_price.get('last_day_price'))
+                except IBKRValueError as e:
+                    await self.send(
+                        text_data=json.dumps({"error": f"Unable to find validated strikes"}))
+
+        if validated_strikes:
+            for key, strikes in validated_strikes.items():
+                strike_entry = {"strike": strike_price, "call": None, "put": None}
+                for strike in strike_group:
+                    response = await self.fetch_strike_info(contract_id, strike_price, strike)
+                    if not response.get("success"):
+                        return []
+
+                    # Process CALL and PUT data
+                    for obj in response["data"]:
+                        maturity_date = obj.get("maturityDate")
+                        if maturity_date and int(maturity_date) >= int(datetime.now().strftime("%Y%m%d")):
+                            live_data = await self.fetch_live_data(obj.get("conid"))
+                            if obj.get("right") == "C":
+                                strike_entry["call"] = {
+                                    "conid": obj.get("conid"),
+                                    "desc2": obj.get("desc2"),
+                                    "live_data": live_data,
+                                }
+                            elif obj.get("right") == "P":
+                                strike_entry["put"] = {
+                                    "conid": obj.get("conid"),
+                                    "desc2": obj.get("desc2"),
+                                    "live_data": live_data,
+                                }
+
+                if strike_entry.get("call") or strike_entry.get("put"):
+                    self.strike_data_list.append(strike_entry)
+                    self.strike_data_list = sorted(self.strike_data_list, key=lambda x: x["strike"])
+                print(self.strike_data_list, "================================")
+                return self.strike_data_list
+
 
 
