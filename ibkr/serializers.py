@@ -166,8 +166,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
 
         instance.save()
-
-        if ticker_data and contract_id:
+        if task:
             fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
 
         return instance
