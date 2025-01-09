@@ -29,24 +29,22 @@ def calculate_strike_range(strikes_response, last_day_price):
     :param last_day_price: The last day price of the asset.
     :return: Dictionary containing filtered call and put strike ranges.
     """
+    range_count = 15
     data = {}
     if not last_day_price:
         raise IBKRValueError("Last day price is required to calculate strike ranges.")
 
-    # Calculate the ±1.5% range
-    lower_bound = last_day_price * 0.985
-    upper_bound = last_day_price * 1.015
 
     all_call_strikes = strikes_response.get('call')
     all_put_strikes = strikes_response.get('put')
-    call_strikes = [strike for strike in all_call_strikes if strike <= lower_bound ]
-    put_strikes = [strike for strike in all_put_strikes if  strike >= upper_bound]
 
-    call_strikes_sorted = sorted(call_strikes, reverse=True)
-    put_strikes_sorted = sorted(put_strikes)
+    call_strikes = [strike for strike in all_call_strikes if strike <= last_day_price][-range_count:]
 
-    data['call'] = call_strikes_sorted[:15]
-    data['put'] = put_strikes_sorted[:15]
+    # Filter for put strikes (greater than or equal to last price)
+    put_strikes = [strike for strike in all_put_strikes if strike >= last_day_price][:range_count]
+
+    data['call'] = call_strikes
+    data['put'] = put_strikes
     return data
 
 

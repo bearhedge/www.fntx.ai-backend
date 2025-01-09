@@ -143,13 +143,19 @@ class IBKRBase:
                 data = response.json()
                 if data:
                     price = data[0].get('31')
-                    pattern = r'\d+(\.\d+)?'
-                    match = re.search(pattern, price)
-                    last_day_price = match.group(0) if match else None
-                    if last_day_price:
-                        return {"success": True, "last_day_price": float(last_day_price)}
+                    if price:
+                        pattern = r'\d+(\.\d+)?'
+                        match = re.search(pattern, price)
+                        last_day_price = match.group(0) if match else None
+                        if last_day_price:
+                            return {"success": True, "last_day_price": float(last_day_price)}
+                        else:
+                            return {"success": False, "error": "Error fetching the last price for the given contract id.", "status":500}
                     else:
-                        return {"success": False, "error": "Error fetching the last price for the given contract id.", "status":500}
+                        return {"success": False, "error": "Error fetching the last price for the given contract id.",
+                                "status": 500}
+
+
             else:
                 return {"success": False, "status": response.status_code}
         except requests.exceptions.RequestException as e:

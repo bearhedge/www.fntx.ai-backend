@@ -178,6 +178,15 @@ REST_FRAMEWORK = {
     ),
 }
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "CONFIG": {
+            "group_expiry": 3600,
+        },
+    },
+}
+
 # LOGGING = {
 #     'version': 1,
 #     'disable_existing_loggers': False,

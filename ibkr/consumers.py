@@ -5,6 +5,7 @@ import json
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
+from channels.exceptions import StopConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.utils.timezone import now
 
@@ -20,32 +21,48 @@ from asgiref.sync import sync_to_async
 
 
 class StrikesConsumer(AsyncWebsocketConsumer):
+
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.ibkr = IBKRBase()
         self.strike_data_list = []
         self.place_order_value = None
         self.userObj = None
         self.keep_running = False
-        super().__init__(*args, **kwargs)
+        self.send_place_order_task = None
+        self.update_live_data_task = None
+
 
     async def connect(self):
-        # Extract token from query parameters
         query_params = parse_qs(self.scope["query_string"].decode())
         user_id = query_params.get("user_id", [None])[0]
         if not user_id:
             await self.send(text_data=json.dumps({"error": "User is not authenticated.", "authentication": False}))
             await self.close()
+            return
 
         self.userObj = await self.get_user_from_token(user_id)
         await self.accept()
         self.keep_running = True
-        asyncio.create_task(self.send_place_order_updates())
+        self.send_place_order_task = asyncio.create_task(self.send_place_order_updates())
 
 
 
     async def disconnect(self, close_code):
-        # Stop the background task when the WebSocket disconnects
         self.keep_running = False
+
+        # Cancel background tasks
+        if self.send_place_order_task:
+            self.send_place_order_task.cancel()
+
+        if self.update_live_data_task:
+
+            self.update_live_data_task.cancel()
+
+        await self.close()
+        await asyncio.sleep(0)
+
+        raise StopConsumer()
 
 
     async def receive(self, text_data):
@@ -70,13 +87,13 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             if processed_data:
                 await self.send(text_data=json.dumps({"option_chain_data": processed_data, "error": None, "authentication": True}))
 
-
             # Yield control to allow the WebSocket to send the data
             await asyncio.sleep(0)
 
 
         # Schedule periodic updates for live data
-        asyncio.create_task(self.update_live_data())
+        if not self.update_live_data_task:
+            self.update_live_data_task = asyncio.create_task(self.update_live_data())
 
     @database_sync_to_async
     def get_user_from_token(self, user_id):
@@ -114,7 +131,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             # Process CALL and PUT data
             for obj in response["data"]:
                 maturity_date = obj.get("maturityDate")
-                if maturity_date and int(maturity_date) == int(datetime.now().strftime("%Y%m%d")):
+                if maturity_date and int(maturity_date) >= int(datetime.now().strftime("%Y%m%d")):
                     live_data = await self.fetch_live_data(obj.get("conid"))
                     if obj.get("right") == "C":
                         strike_entry["call"] = {
@@ -132,6 +149,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
         if strike_entry.get("call") or strike_entry.get("put"):
             self.strike_data_list.append(strike_entry)
             self.strike_data_list = sorted(self.strike_data_list, key=lambda x: x["strike"])
+        print(self.strike_data_list, "================================")
         return self.strike_data_list
 
     async def fetch_strike_info(self, contract_id, strike_price, strike):

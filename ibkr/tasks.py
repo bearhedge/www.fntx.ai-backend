@@ -34,7 +34,6 @@ def tickle_ibkr_session(self, data=None):
 
     ibkr = IBKRBase()
     response = ibkr.auth_status()
-    print(response, "===================")
     if not response.get('success'):
         return _disable_task_and_update_status(onboarding_obj, task_id, task_name)
     elif response.get('success') and not response.get('data').get('authenticated'):
@@ -87,8 +86,19 @@ def update_timer(self, timer_id, task_id):
 
 
 @shared_task(bind=True)
-def fetch_and_save_strikes(self, contract_id, user_id, month):
+def fetch_and_save_strikes(self, contract_id, user_id, month, task_date, task_id):
     task_name = "fetch_and_save_strikes"
+    today = now().date()
+    if str(today) != task_date:
+        # Disable the task if the date doesn't match
+        task = PeriodicTask.objects.filter(id=task_id).first()
+        if task:
+            task.enabled = False
+            task.save()
+        success_details = log_task_status(task_name, message="Task disabled as it is completed for today",
+                                          additional_data={"task_id": task_id})
+        self.update_state(state="SUCCESS", meta=success_details)
+        return
     ibkr = IBKRBase()
     strikes_response = ibkr.fetch_strikes(contract_id, month)
     validated_strikes = {}

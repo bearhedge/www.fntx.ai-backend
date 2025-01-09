@@ -99,17 +99,20 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 task = PeriodicTask.objects.create(
                     interval=schedule,
                     name=task_name,
-                    task='ibkr.tasks.fetch_and_save_strikes',
-                    args=json.dumps([contract_id, str(validated_data["user"]), month]),
-                )
+                    task='ibkr.tasks.fetch_and_save_strikes')
+
+                task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+                task.save()
                 validated_data['validate_strikes_task'] = task
 
         created_instance = SystemData.objects.create(**validated_data)
-        fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month])
+        fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
 
         return created_instance
 
     def update(self, instance, validated_data):
+        today = now().date()
+
         ticker_data = validated_data.get('ticker_data')
         user = validated_data.get('user')
 
@@ -145,7 +148,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 if instance.validate_strikes_task:
                     task = instance.validate_strikes_task
                     task.interval = schedule
-                    task.args = json.dumps([contract_id, str(validated_data["user"]), month])
+                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
                     task.name = task_name
                     task.save()
                 else:
@@ -165,7 +168,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
         instance.save()
 
         if ticker_data and contract_id:
-            fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month])
+            fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
 
         return instance
 
