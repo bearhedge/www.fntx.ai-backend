@@ -112,7 +112,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         today = now().date()
-
+        task = None
         ticker_data = validated_data.get('ticker_data')
         user = validated_data.get('user')
 
@@ -152,14 +152,13 @@ class SystemDataSerializer(serializers.ModelSerializer):
                     task.name = task_name
                     task.save()
                 else:
-
-
                     task = PeriodicTask.objects.create(
                         interval=schedule,
                         name=task_name,
                         task='ibkr.tasks.fetch_and_save_strikes',
-                        args=json.dumps([contract_id, str(validated_data["user"]), month]),
                     )
+                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+                    task.save()
                     validated_data['validate_strikes_task'] = task
 
         for attr, value in validated_data.items():
