@@ -393,9 +393,8 @@ class RangeDataView(APIView, IBKRBase):
                         {"error": str(e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
-                return Response(bound_data, status=status.HTTP_200_OK)
-        else:
-            return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
