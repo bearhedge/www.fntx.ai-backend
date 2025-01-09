@@ -38,10 +38,10 @@ def calculate_strike_range(strikes_response, last_day_price):
     all_call_strikes = strikes_response.get('call')
     all_put_strikes = strikes_response.get('put')
 
-    call_strikes = [strike for strike in all_call_strikes if strike <= last_day_price][:range_count]
+    call_strikes = [strike for strike in all_call_strikes if strike >= last_day_price][:range_count]
 
     # Filter for put strikes (greater than or equal to last price)
-    put_strikes = [strike for strike in all_put_strikes if strike >= last_day_price][-range_count:]
+    put_strikes = [strike for strike in all_put_strikes if strike <= last_day_price][-range_count:]
 
     data['call'] = call_strikes
     data['put'] = put_strikes
