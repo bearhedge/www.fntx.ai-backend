@@ -191,26 +191,33 @@ class SystemDataView(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
-        ibkr = IBKRBase()
-        authentication = ibkr.auth_status()
-        if not authentication.get('success'):
-            authenticated = False
-        elif authentication.get('success') and not authentication.get('data').get('authenticated'):
-            authenticated = False
-        else:
-            authenticated = True
-        if not authenticated:
-            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        data = request.data
-        data["user"] = request.user.id
-        serializer = self.get_serializer(instance, data=data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        try:
+            ibkr = IBKRBase()
+            authentication = ibkr.auth_status()
+            if not authentication.get('success'):
+                authenticated = False
+            elif authentication.get('success') and not authentication.get('data').get('authenticated'):
+                authenticated = False
+            else:
+                authenticated = True
+            if not authenticated:
+                return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            data = request.data
+            data["user"] = request.user.id
+            serializer = self.get_serializer(instance, data=data, partial=partial)
+            if serializer.is_valid():
+                self.perform_update(serializer)
+                return Response(serializer.data)
+            return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e.args)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(serializer.data)
+
+
+
 
 @extend_schema(tags=["IBKR"])
 class TradingStatusView(APIView):
@@ -386,9 +393,8 @@ class RangeDataView(APIView, IBKRBase):
                         {"error": str(e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
-                return Response(bound_data, status=status.HTTP_200_OK)
-        else:
-            return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
