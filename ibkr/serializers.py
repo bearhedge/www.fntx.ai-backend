@@ -148,7 +148,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 if instance.validate_strikes_task:
                     task = instance.validate_strikes_task
                     task.interval = schedule
-                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(instance.validate_strikes_task.id)])
                     task.name = task_name
                     task.save()
                 else:
