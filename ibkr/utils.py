@@ -33,17 +33,20 @@ def calculate_strike_range(strikes_response, last_day_price):
     if not last_day_price:
         raise IBKRValueError("Last day price is required to calculate strike ranges.")
 
-    # Calculate the ±5% range
-    lower_bound = last_day_price * 0.95
-    upper_bound = last_day_price * 1.05
+    # Calculate the ±1.5% range
+    lower_bound = last_day_price * 0.985
+    upper_bound = last_day_price * 1.015
 
     all_call_strikes = strikes_response.get('call')
     all_put_strikes = strikes_response.get('put')
-    call_strikes = [strike for strike in all_call_strikes if lower_bound <= strike <= upper_bound]
-    put_strikes = [strike for strike in all_put_strikes if lower_bound <= strike <= upper_bound]
+    call_strikes = [strike for strike in all_call_strikes if strike <= lower_bound ]
+    put_strikes = [strike for strike in all_put_strikes if  strike >= upper_bound]
 
-    data['call'] = call_strikes
-    data['put'] = put_strikes
+    call_strikes_sorted = sorted(call_strikes, reverse=True)
+    put_strikes_sorted = sorted(put_strikes)
+
+    data['call'] = call_strikes_sorted[:15]
+    data['put'] = put_strikes_sorted[:15]
     return data
 
 

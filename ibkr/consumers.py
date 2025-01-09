@@ -63,7 +63,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             return
 
         strikes = await sync_to_async(list)(
-            Strikes.objects.filter(contract_id=contract_id)
+            Strikes.objects.filter(contract_id=contract_id).order_by('strike_price')
         )
 
         # Group strikes by strike price and process each group
@@ -71,8 +71,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             processed_data = await self.process_strike(contract_id, strike_price, strike_group)
             if processed_data:
                 await self.send(text_data=json.dumps({"option_chain_data": processed_data, "error": None, "authentication": True}))
-            else:
-                await self.send(text_data=json.dumps({"option_chain_data": processed_data, "error": "Unable to process strikes.", "authentication": False}))
+
 
             # Yield control to allow the WebSocket to send the data
             await asyncio.sleep(0)
@@ -132,9 +131,9 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                             "live_data": live_data,
                         }
 
-        if strike_entry.get("call") and strike_entry.get("put"):
+        if strike_entry.get("call") or strike_entry.get("put"):
             self.strike_data_list.append(strike_entry)
-
+            self.strike_data_list = sorted(self.strike_data_list, key=lambda x: x["strike"])
         return self.strike_data_list
 
     async def fetch_strike_info(self, contract_id, strike_price, strike):
@@ -170,12 +169,8 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             for strike_entry in self.strike_data_list:
                 for option_type in ["call", "put"]:
                     option_data = strike_entry.get(option_type)
-                    print("option_data" * 10)
-                    print(option_data)
                     if option_data and option_data.get("conid"):
                         live_data = await self.fetch_live_data(option_data["conid"])
-                        print(live_data)
-                        print("live_data" * 10)
                         option_data["live_data"] = live_data if live_data else []
                         await self.send(text_data=json.dumps({
                             "option_chain_data": self.strike_data_list, "error": None, "authentication": True
@@ -183,7 +178,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                         await asyncio.sleep(0)
 
             # Wait for 1 second before fetching live data again
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     async def send_place_order_updates(self):
         while self.keep_running:
