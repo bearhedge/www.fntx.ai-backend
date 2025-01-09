@@ -19,6 +19,8 @@ from datetime import datetime
 from asgiref.sync import sync_to_async
 
 
+
+
 class StrikesConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         self.ibkr = IBKRBase()
@@ -115,7 +117,7 @@ class StrikesConsumer(AsyncWebsocketConsumer):
             # Process CALL and PUT data
             for obj in response["data"]:
                 maturity_date = obj.get("maturityDate")
-                if maturity_date and int(maturity_date) == int(datetime.now().strftime("%Y%m%d")):
+                if maturity_date and int(maturity_date) >= int(datetime.now().strftime("%Y%m%d")):
                     live_data = await self.fetch_live_data(obj.get("conid"))
                     if obj.get("right") == "C":
                         strike_entry["call"] = {
@@ -203,4 +205,28 @@ class StrikesConsumer(AsyncWebsocketConsumer):
     def fetch_timer_data(self):
         # This method runs in a synchronous thread to avoid async ORM conflicts
         return list(TimerData.objects.filter(user=self.userObj, created_at__date=now().date()))
+
+
+class StreamData(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        self.ibkr = IBKRBase()
+        self.strike_data_list = []
+        self.place_order_value = None
+        self.userObj = None
+        self.keep_running = False
+        super().__init__(*args, **kwargs)
+
+    async def connect(self):
+        # Extract token from query parameters
+        query_params = parse_qs(self.scope["query_string"].decode())
+        user_id = query_params.get("user_id", [None])[0]
+        if not user_id:
+            await self.send(text_data=json.dumps({"error": "User is not authenticated.", "authentication": False}))
+            await self.close()
+
+        self.userObj = await self.get_user_from_token(user_id)
+        await self.accept()
+        self.keep_running = True
+        asyncio.create_task(self.send_place_order_updates())
+
 
