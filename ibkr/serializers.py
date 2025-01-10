@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -50,9 +50,19 @@ class TimerDataSerializer(serializers.ModelSerializer):
 
 
 class TimerDataListSerializer(serializers.ModelSerializer):
+    end_time = serializers.SerializerMethodField()
     class Meta:
         model = TimerData
         fields = '__all__'
+
+    def get_end_time(self, obj):
+        today = now().date()
+        start_datetime = datetime.combine(today, obj.start_time)
+
+        end_datetime = start_datetime + timedelta(minutes=obj.original_timer_value)
+
+        # Format the time as HH:MM
+        return end_datetime.strftime('%H:%M')
 
 
 class SystemDataSerializer(serializers.ModelSerializer):

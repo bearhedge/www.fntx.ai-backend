@@ -198,7 +198,7 @@ def place_orders_task(self, user_id, data):
         # Place Take Profit Buy Order
         customer_order_id = generate_customer_order_id()
 
-        take_profit_price = obj.get('price') - (obj.get('price') - (obj.get('price')/100 * obj.get("take_profit")))
+        take_profit_price = obj.get('price')/100 * obj.get("take_profit")
         take_profit_order_data = sell_order_data.copy()
         take_profit_order_data["orders"][0].update({
             "price": round(take_profit_price, 2) * obj.get('quantity'),
