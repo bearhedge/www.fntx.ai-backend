@@ -83,12 +83,9 @@ class StrikesConsumer(AsyncWebsocketConsumer):
 
         # Group strikes by strike price and process each group
         for strike_price, strike_group in self.group_strikes_by_price(strikes).items():
-            processed_data = await self.process_strike(contract_id, strike_price, strike_group)
-            if processed_data:
-                await self.send(text_data=json.dumps({"option_chain_data": processed_data, "error": None, "authentication": True}))
+            await self.process_strike(contract_id, strike_price, strike_group)
 
             # Yield control to allow the WebSocket to send the data
-            await asyncio.sleep(0)
 
 
         # Schedule periodic updates for live data
@@ -146,11 +143,16 @@ class StrikesConsumer(AsyncWebsocketConsumer):
                             "live_data": live_data,
                         }
 
-        if strike_entry.get("call") or strike_entry.get("put"):
-            self.strike_data_list.append(strike_entry)
-            self.strike_data_list = sorted(self.strike_data_list, key=lambda x: x["strike"])
-        print(self.strike_data_list, "================================")
-        return self.strike_data_list
+                if strike_entry.get("call") or strike_entry.get("put") and strike_entry not in self.strike_data_list:
+                    self.strike_data_list.append(strike_entry)
+                    self.strike_data_list = sorted(self.strike_data_list, key=lambda x: x["strike"])
+                    await self.send(text_data=json.dumps({
+                        "option_chain_data": self.strike_data_list,
+                        "error": None,
+                        "authentication": True
+                    }))
+                    await asyncio.sleep(0)
+
 
     async def fetch_strike_info(self, contract_id, strike_price, strike):
         try:

@@ -46,7 +46,7 @@ class InstrumentSerializer(serializers.ModelSerializer):
 class TimerDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimerData
-        fields = ['timer_value', 'start_time', 'original_timer_value']
+        fields = ['timer_value', 'start_time', 'original_timer_value', 'original_time_start']
 
 
 class TimerDataListSerializer(serializers.ModelSerializer):
@@ -57,7 +57,7 @@ class TimerDataListSerializer(serializers.ModelSerializer):
 
     def get_end_time(self, obj):
         today = now().date()
-        start_datetime = datetime.combine(today, obj.start_time)
+        start_datetime = datetime.combine(today, obj.original_time_start)
 
         end_datetime = start_datetime + timedelta(minutes=obj.original_timer_value)
 

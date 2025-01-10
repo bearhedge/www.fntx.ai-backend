@@ -88,6 +88,7 @@ class TimerData(BaseModel):
     user= models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     timer_value = models.IntegerField()
     original_timer_value = models.IntegerField()
+    original_time_start = models.TimeField(blank=True, null=True)
     start_time = models.TimeField()
     place_order = models.CharField(max_length=5, blank=True, null=True)
 

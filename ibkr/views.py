@@ -291,6 +291,7 @@ class TimerDataViewSet(viewsets.ModelViewSet):
         data = request.data
         data['original_timer_value'] = data.get('timer_value')
         data['timer_value'] = data.get('timer_value') - 1
+        data['original_time_start'] = data.get('start_time')
         serializer = TimerDataSerializer(data=request.data)
         if serializer.is_valid():
             timer = serializer.save(user=request.user)
