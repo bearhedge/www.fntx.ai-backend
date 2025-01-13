@@ -360,7 +360,7 @@ class RangeDataView(APIView, IBKRBase):
         super().__init__(**kwargs)
         IBKRBase.__init__(self)
 
-    def get_market_data(self, conid, period, timesteps):
+    def get_market_data(self, conid, bar):
         """
         Fetch market data using the 'bar' parameter.
         """
@@ -371,11 +371,10 @@ class RangeDataView(APIView, IBKRBase):
             session_token = data['data']['session']
         except (KeyError, ValueError):
             raise IBKRAPIError("Failed to retrieve session token from Tickle API response.")
-
         params = {
             'conid': conid,
             'period': '2w',
-            'bar': period,
+            'bar': bar,
             'session': session_token
         }
         try:
@@ -435,11 +434,11 @@ class RangeDataView(APIView, IBKRBase):
             system_data_obj = SystemData.objects.filter(user=request.user).first()
             if system_data_obj:
                 conid = system_data_obj.ticker_data.get('conid')
-                period = serializer.validated_data['period']
+                bar = serializer.validated_data['bar']
                 time_steps = serializer.validated_data['time_steps']
                 try:
                     # Fetch raw market data
-                    market_data = self.get_market_data(conid, period, time_steps)
+                    market_data = self.get_market_data(conid, bar)
 
                     # Process the data and calculate statistics
                     statistics = self.process_market_data(market_data, time_steps)

@@ -137,7 +137,9 @@ class PlaceOrder(BaseModel):
 
 
 class Strikes(BaseModel):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, blank=True, null=True)
     contract_id = models.CharField(max_length=255)
+    strike_info = models.JSONField(blank=True, null=True)
     strike_price = models.FloatField()
     last_price = models.FloatField()
     is_valid = models.BooleanField(blank=True, null=True)

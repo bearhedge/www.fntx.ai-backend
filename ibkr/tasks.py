@@ -14,7 +14,7 @@ from core.celery_response import log_task_status
 from core.exceptions import IBKRValueError, IBKRAppError
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TimerData, Strikes
-from ibkr.utils import calculate_strike_range, save_order, generate_customer_order_id
+from ibkr.utils import calculate_strike_range_and_save, save_order, generate_customer_order_id
 
 
 @shared_task(bind=True, name="")
@@ -91,6 +91,8 @@ def fetch_and_save_strikes(self, contract_id, user_id, month, task_date, task_id
     today = now().date()
     if str(today) != task_date:
         # Disable the task if the date doesn't match
+        Strikes.objects.filter(contract_id=contract_id, user_id=user_id).delete()
+
         task = PeriodicTask.objects.filter(id=task_id).first()
         if task:
             task.enabled = False
@@ -101,14 +103,12 @@ def fetch_and_save_strikes(self, contract_id, user_id, month, task_date, task_id
         return
     ibkr = IBKRBase()
     strikes_response = ibkr.fetch_strikes(contract_id, month)
-    validated_strikes = {}
-    last_day_price = None
     if strikes_response.get('success'):
         # fetch the last day price of the contract
         last_day_price = ibkr.last_day_price(contract_id)
         if last_day_price.get('success'):
             try:
-                validated_strikes = calculate_strike_range(strikes_response.get("data"), last_day_price.get('last_day_price'))
+                calculate_strike_range_and_save(strikes_response.get("data"), last_day_price.get('last_day_price'), contract_id, month, user_id, ibkr)
             except IBKRValueError as e:
                 error_details = log_task_status(task_name, exception=e, additional_data={"contract_id": contract_id})
                 self.update_state(state="FAILURE", meta=error_details)
@@ -118,20 +118,6 @@ def fetch_and_save_strikes(self, contract_id, user_id, month, task_date, task_id
         self.update_state(state="FAILURE", meta=error_details)
         raise
 
-    # delete all strikes of this contract id and then save again.
-    Strikes.objects.filter(contract_id=contract_id).delete()
-    for key, strikes in validated_strikes.items():
-        for strike in strikes:
-            # Update if exists or create otherwise
-            Strikes.objects.update_or_create(
-                contract_id=contract_id,
-                strike_price=strike,
-                right="P" if key == 'put' else "C",
-                month=month,
-                defaults={
-                    'last_price': last_day_price.get('last_day_price'),
-                }
-            )
     success_details = log_task_status(task_name, message="Strikes fetched and saved", additional_data={"contract_id": contract_id})
     self.update_state(state="SUCCESS", meta=success_details)
 

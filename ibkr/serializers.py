@@ -111,7 +111,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                     name=task_name,
                     task='ibkr.tasks.fetch_and_save_strikes')
 
-                task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+                task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(task.id)])
                 task.save()
                 validated_data['validate_strikes_task'] = task
 
@@ -158,7 +158,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 if instance.validate_strikes_task:
                     task = instance.validate_strikes_task
                     task.interval = schedule
-                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(instance.validate_strikes_task.id)])
+                    task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(instance.validate_strikes_task.id)])
                     task.name = task_name
                     task.save()
                 else:
@@ -219,8 +219,7 @@ class UpperLowerBoundSerializer(serializers.Serializer):
 
         numerical_part = int(match.group(1))
         unit_part = match.group(2)
-
-        data['period'] = f"{time_steps * numerical_part}{unit_part}"
+        data['bar'] = f"{numerical_part}{unit_part}"
         return data
 
 
