@@ -116,7 +116,8 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 validated_data['validate_strikes_task'] = task
 
         created_instance = SystemData.objects.create(**validated_data)
-        fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+
+        fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
 
         return created_instance
 
@@ -176,7 +177,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
 
         instance.save()
         if task:
-            fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+            fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
 
         return instance
 
