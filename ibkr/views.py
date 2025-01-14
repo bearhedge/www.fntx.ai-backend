@@ -394,16 +394,12 @@ class RangeDataView(APIView, IBKRBase):
         if market_data:
             try:
                 df = pd.DataFrame(market_data['data'])
-                df['date'] = pd.to_datetime(df['t'], unit='ms')  # Assuming 't' is the timestamp
+                df['date'] = pd.to_datetime(df['t'], unit='ms')
                 df.set_index('date', inplace=True)
             except Exception as e:
                 return {"error": "Unable to calculate the upper and lower bound with the given timeframe."}
 
             closing_prices = df['c']
-
-            # Ensure we have enough data for the trailing days
-            if len(closing_prices) < num_days:
-                raise IBKRAPIError("Not enough data for the specified number of trailing days.")
 
             closing_prices = closing_prices.tail(num_days)
 
