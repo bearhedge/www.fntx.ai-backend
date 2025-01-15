@@ -19,5 +19,4 @@ urlpatterns = [
     path('range',RangeDataView.as_view(),name='Range'),
     path('get-token', IBKRTokenView.as_view(), name="token"),
     path("", include(router.urls)),
-
 ]

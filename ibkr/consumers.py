@@ -2,24 +2,18 @@ import requests
 import asyncio
 import json
 
-from urllib.parse import parse_qs
-
-from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.utils.timezone import now
 from asgiref.sync import sync_to_async
 
-
 from accounts.models import CustomUser
 from core.base_consumer import BaseConsumer
 from core.exceptions import IBKRValueError
-from core.views import IBKRBase
 from .models import Strikes, TimerData
 
-
-from .utils import calculate_strike_range
+from .utils import calculate_strike_range_and_save
 
 
 class StrikesConsumer(BaseConsumer):
@@ -254,6 +248,7 @@ class ChartsData(BaseConsumer):
         self.candle_graph_task = asyncio.create_task(self.candle_data())
 
     async def candle_data(self):
+        pass
 
 
 

@@ -227,7 +227,6 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
             while reply_id:
                 # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
-                print(confirm_response, "=====================")
                 if not confirm_response.get("success"):
                     error_details = log_task_status(
                         task_name,
