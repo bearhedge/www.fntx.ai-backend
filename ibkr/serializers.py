@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -46,13 +46,23 @@ class InstrumentSerializer(serializers.ModelSerializer):
 class TimerDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimerData
-        fields = ['timer_value', 'start_time', 'original_timer_value']
+        fields = ['timer_value', 'start_time', 'original_timer_value', 'original_time_start']
 
 
 class TimerDataListSerializer(serializers.ModelSerializer):
+    end_time = serializers.SerializerMethodField()
     class Meta:
         model = TimerData
         fields = '__all__'
+
+    def get_end_time(self, obj):
+        today = now().date()
+        start_datetime = datetime.combine(today, obj.original_time_start)
+
+        end_datetime = start_datetime + timedelta(minutes=obj.original_timer_value)
+
+        # Format the time as HH:MM
+        return end_datetime.strftime('%H:%M')
 
 
 class SystemDataSerializer(serializers.ModelSerializer):
@@ -101,12 +111,13 @@ class SystemDataSerializer(serializers.ModelSerializer):
                     name=task_name,
                     task='ibkr.tasks.fetch_and_save_strikes')
 
-                task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+                task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(task.id)])
                 task.save()
                 validated_data['validate_strikes_task'] = task
 
         created_instance = SystemData.objects.create(**validated_data)
-        fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+
+        fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
 
         return created_instance
 
@@ -148,7 +159,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 if instance.validate_strikes_task:
                     task = instance.validate_strikes_task
                     task.interval = schedule
-                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(instance.validate_strikes_task.id)])
+                    task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(instance.validate_strikes_task.id)])
                     task.name = task_name
                     task.save()
                 else:
@@ -166,7 +177,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
 
         instance.save()
         if task:
-            fetch_and_save_strikes.apply_async(args=[contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
+            fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
 
         return instance
 
@@ -209,8 +220,7 @@ class UpperLowerBoundSerializer(serializers.Serializer):
 
         numerical_part = int(match.group(1))
         unit_part = match.group(2)
-
-        data['period'] = f"{time_steps * numerical_part}{unit_part}"
+        data['bar'] = f"{numerical_part}{unit_part}"
         return data
 
 

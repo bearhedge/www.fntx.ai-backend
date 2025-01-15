@@ -1,5 +1,7 @@
 import json
 import requests
+import pandas as pd
+import numpy as np
 
 from collections import defaultdict
 
@@ -289,6 +291,7 @@ class TimerDataViewSet(viewsets.ModelViewSet):
         data = request.data
         data['original_timer_value'] = data.get('timer_value')
         data['timer_value'] = data.get('timer_value') - 1
+        data['original_time_start'] = data.get('start_time')
         serializer = TimerDataSerializer(data=request.data)
         if serializer.is_valid():
             timer = serializer.save(user=request.user)
@@ -357,7 +360,10 @@ class RangeDataView(APIView, IBKRBase):
         super().__init__(**kwargs)
         IBKRBase.__init__(self)
 
-    def get_market_data(self, conid, period):
+    def get_market_data(self, conid, bar):
+        """
+        Fetch market data using the 'bar' parameter.
+        """
         base_url = settings.IBKR_BASE_URL + "/iserver/marketdata/history"
 
         try:
@@ -365,37 +371,88 @@ class RangeDataView(APIView, IBKRBase):
             session_token = data['data']['session']
         except (KeyError, ValueError):
             raise IBKRAPIError("Failed to retrieve session token from Tickle API response.")
-
         params = {
             'conid': conid,
-            'period': period,
+            'period': '2w',
+            'bar': bar,
             'session': session_token
         }
         try:
             response = requests.get(base_url, params=params, verify=False)
             if response.status_code == 200:
-                return fetch_bounds_from_json(response.json())
+                return response.json()  # Return raw JSON data
+            else:
+                raise IBKRAPIError(f"Failed to fetch market data. Status code: {response.status_code}")
         except requests.exceptions.RequestException as e:
             raise IBKRAPIError(f"Market data API error: {str(e)}")
 
+    def process_market_data(self, market_data, num_days):
+        """
+        Process market data using pandas and numpy to compute the desired statistics.
+        """
+        # Convert market data to a DataFrame
+        if market_data:
+            try:
+                df = pd.DataFrame(market_data['data'])
+                df['date'] = pd.to_datetime(df['t'], unit='ms')
+                df.set_index('date', inplace=True)
+            except Exception as e:
+                return {"error": "Unable to calculate the upper and lower bound with the given timeframe."}
+
+            closing_prices = df['c']
+
+            closing_prices = closing_prices.tail(num_days)
+
+            daily_returns = closing_prices.pct_change().dropna()
+
+            std_dev_return = daily_returns.std()
+
+
+            # Compute the expected price range
+            latest_price = closing_prices.iloc[-1]
+            range_upper = latest_price * (1 + std_dev_return)
+            range_lower = latest_price * (1 - std_dev_return)
+
+            return {
+                "upper_bound": round(range_upper, 2),
+                "lower_bound": round(range_lower, 2)
+            }
+        else:
+            return {"error": "No data found for the given time."}
+
     def post(self, request):
+        """
+        Handle the POST request to fetch market data and calculate statistics.
+        """
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
+            # Fetch the system data for the logged-in user
             system_data_obj = SystemData.objects.filter(user=request.user).first()
             if system_data_obj:
                 conid = system_data_obj.ticker_data.get('conid')
-                period = serializer.validated_data['period']
+                bar = serializer.validated_data['bar']
+                time_steps = serializer.validated_data['time_steps']
                 try:
-                    bound_data = self.get_market_data(conid, period)
-                    return Response(bound_data, status=status.HTTP_200_OK)
+                    # Fetch raw market data
+                    market_data = self.get_market_data(conid, bar)
+
+                    # Process the data and calculate statistics
+                    statistics = self.process_market_data(market_data, time_steps)
+                    return Response(statistics, status=status.HTTP_200_OK)
                 except IBKRAPIError as e:
                     return Response(
                         {"error": str(e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
+                except ValueError as e:
+                    return Response(
+                        {"error": str(e)},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             else:
-                return Response({'error': "No System Data found for the logged in user."}, status=status.HTTP_200_OK)
+                return Response({'error': "No System Data found for the logged-in user."}, status=status.HTTP_404_NOT_FOUND)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 @extend_schema(tags=["History Data"])
