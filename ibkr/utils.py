@@ -1,7 +1,7 @@
-import re
 from datetime import datetime
 
-from django.db.models import Max
+from django.db.models import Max, IntegerField
+from django.db.models.functions import Cast, Substr
 
 from core.exceptions import IBKRValueError
 from ibkr.models import PlaceOrder, Strikes
@@ -112,20 +112,14 @@ def generate_customer_order_id():
     Format: order-id-1, order-id-2, etc.
     """
 
-    last_order = PlaceOrder.objects.aggregate(
-        max_id=Max('customer_order_id')
-    )['max_id']
+    last_order = PlaceOrder.objects.annotate(
+        numeric_id=Cast(Substr('customer_order_id', 10), IntegerField())
+    ).aggregate(max_id=Max('numeric_id'))['max_id']
 
     if last_order:
+        next_order_num = last_order + 1
+        new_order_id = f"order-id-{next_order_num}"
 
-
-        match = re.search(r"^(.*?)-id-(\d+)$", last_order)
-        if match:
-            prefix, order_num = match.groups()
-            next_order_num = int(order_num) + 1
-            new_order_id = f"{prefix}-id-{next_order_num}"
-        else:
-            raise ValueError("Invalid customer_order_id format in database.")
     else:
         new_order_id = "order-id-1"
 

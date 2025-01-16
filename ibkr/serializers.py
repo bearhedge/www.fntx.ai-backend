@@ -71,22 +71,31 @@ class SystemDataSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+        ibkr = IBKRBase()
         today = now().date()
-
-        ticker_data = validated_data.get('ticker_data')
+        contract_id = None
+        ticker = None
+        symbol = validated_data.pop('ticker_data')
         user = validated_data.get('user')
         if SystemData.objects.filter(user=user, created_at__date=today).exists():
             raise serializers.ValidationError({"error":"An entry for this user already exists for today."})
         valid_contract = False
-        if ticker_data:
-            contract_id = ticker_data.get('conid')
-            sections = ticker_data.get('sections')
-            for section in sections:
-                if section.get('secType') == 'OPT':
-                    months = section.get("months").split(';')
-                    if months:
-                        month = months[0]
-                        valid_contract = True
+        if symbol:
+            search_spy_data = ibkr.get_spy_conId(symbol)
+            data = search_spy_data.get('data') if search_spy_data.get('success') else []
+            if data:
+                for ticker_data in data:
+                    ticker = ticker_data
+                    contract_id = ticker_data.get('conid')
+                    sections = ticker_data.get('sections')
+                    for section in sections:
+                        if section.get('secType') == 'OPT':
+                            months = section.get("months").split(';')
+                            if months:
+                                month = months[0]
+                                valid_contract = True
+                                break
+                    if valid_contract:
                         break
             if not valid_contract:
                 raise serializers.ValidationError({"error": "Cannot use this Contract ID as it is not for options trading."})
@@ -114,6 +123,7 @@ class SystemDataSerializer(serializers.ModelSerializer):
                 task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(task.id)])
                 task.save()
                 validated_data['validate_strikes_task'] = task
+                validated_data['ticker_data'] = ticker
 
         created_instance = SystemData.objects.create(**validated_data)
 
@@ -124,21 +134,31 @@ class SystemDataSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         today = now().date()
         task = None
-        ticker_data = validated_data.get('ticker_data')
+        symbol = validated_data.pop('ticker_data')
         user = validated_data.get('user')
+        ibkr = IBKRBase()
+        contract_id = None
+        ticker = None
 
         valid_contract = False
         month = None
-        if ticker_data:
-            contract_id = ticker_data.get('conid')
-            sections = ticker_data.get('sections')
+        if symbol:
+            search_spy_data = ibkr.get_spy_conId(symbol)
+            data = search_spy_data.get('data') if search_spy_data.get('success') else []
+            if data:
+                for ticker_data in data:
+                    ticker = ticker_data
+                    contract_id = ticker_data.get('conid')
+                    sections = ticker_data.get('sections')
 
-            for section in sections:
-                if section.get('secType') == 'OPT':
-                    months = section.get("months").split(';')
-                    if months:
-                        month = months[0]
-                        valid_contract = True
+                    for section in sections:
+                        if section.get('secType') == 'OPT':
+                            months = section.get("months").split(';')
+                            if months:
+                                month = months[0]
+                                valid_contract = True
+                                break
+                    if valid_contract:
                         break
 
             if not valid_contract:
@@ -171,12 +191,13 @@ class SystemDataSerializer(serializers.ModelSerializer):
                     task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
                     task.save()
                     validated_data['validate_strikes_task'] = task
+                validated_data['ticker_data'] = ticker
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
-        if task:
+        if task and contract_id:
             fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
 
         return instance
