@@ -55,6 +55,7 @@ class SystemData(BaseModel):
     confidence_level = models.IntegerField(blank=True, null=True)
     contract_expiry = models.IntegerField(blank=True, null=True)
     contract_id = models.CharField(max_length=100, blank=True, null=True)
+    contract_month = models.CharField(max_length=50, blank=True, null=True)
     contract_trading_months = models.TextField(blank=True, null=True)
     no_of_contracts = models.IntegerField(blank=True, null=True)
     contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)

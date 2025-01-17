@@ -65,7 +65,6 @@ class IBKRBase:
     def fetch_strikes(self, contract_id, month):
         try:
             response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/strikes?conid={contract_id}&sectype=OPT&month={month}", verify=False)
-            print(response.content)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
