@@ -115,7 +115,7 @@ class UserTokenObtainPairSerializer(TokenObtainPairSerializer):
         task_name = f"tickle_ibkr_session_user_{user.id}"
         if not PeriodicTask.objects.filter(name=task_name).exists():
             interval_schedule, _ = IntervalSchedule.objects.get_or_create(
-                every=5, period=IntervalSchedule.SECONDS
+                every=3, period=IntervalSchedule.SECONDS
             )
 
             periodic_task = PeriodicTask.objects.create(

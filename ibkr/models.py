@@ -55,6 +55,7 @@ class SystemData(BaseModel):
     confidence_level = models.IntegerField(blank=True, null=True)
     contract_expiry = models.IntegerField(blank=True, null=True)
     contract_id = models.CharField(max_length=100, blank=True, null=True)
+    contract_month = models.CharField(max_length=50, blank=True, null=True)
     contract_trading_months = models.TextField(blank=True, null=True)
     no_of_contracts = models.IntegerField(blank=True, null=True)
     contract_type = models.CharField(max_length=4, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)
@@ -119,6 +120,7 @@ class PlaceOrder(BaseModel):
     user = models.ForeignKey(CustomUser, on_delete= models.CASCADE)
     accountId = models.CharField(max_length=100)
     conid = models.IntegerField()
+    con_desc2 = models.CharField(max_length=500, blank=True, null=True)
     optionType = models.CharField(max_length=10)
     orderType = models.CharField(max_length=4, choices=ORDER_TYPE_CHOICES)
     customer_order_id = models.CharField(max_length=100)
@@ -129,8 +131,10 @@ class PlaceOrder(BaseModel):
     limit_sell = models.FloatField(blank=True, null=True)
     stop_loss = models.FloatField(blank=True, null=True)
     take_profit = models.FloatField(blank=True, null=True)
+    average_price = models.FloatField(blank=True, null=True)
     order_api_response = models.JSONField(blank=True, null=True)
-    is_deleted = models.BooleanField(default=False)
+    order_status = models.CharField(max_length=100, blank=True, null=True)
+    is_cancelled = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.user.username} - {self.conid} - {self.quantity}"

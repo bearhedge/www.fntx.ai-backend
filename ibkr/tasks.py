@@ -139,7 +139,6 @@ def place_orders_task(self, user_id, data):
     user_obj = CustomUser.objects.filter(id=user_id).first()
     timer_obj = TimerData.objects.filter(user=user_obj, created_at__date=now().date()).first()
     save_order_data = {"user": user_obj, "accountId": account}
-
     for obj in data:
         # Place Sell Order
         customer_order_id = generate_customer_order_id()
@@ -148,7 +147,7 @@ def place_orders_task(self, user_id, data):
                 "conid": obj.get('conid'),
                 "manualIndicator": True,
                 "orderType": "LMT",
-                "price": obj.get("limit_sell") * obj.get('quantity'),
+                "price": obj.get("limit_sell"),
                 "side": "SELL",
                 "tif": "DAY",
                 "quantity": obj.get('quantity'),
@@ -158,8 +157,8 @@ def place_orders_task(self, user_id, data):
         print(sell_order_data)
         print("#1" * 10)
         sell_order_response = ibkr.placeOrder(account, sell_order_data)
-        if not handle_order_response(self, task_name, ibkr, sell_order_response, obj, save_order_data, "SELL", customer_order_id):
-            return
+        handle_order_response(self, task_name, ibkr, sell_order_response, obj, save_order_data, "SELL", customer_order_id)
+
 
         timer_obj.place_order = "D"
         timer_obj.save()
@@ -169,17 +168,16 @@ def place_orders_task(self, user_id, data):
         stop_loss_price = obj.get("price") + obj.get("price") * (obj.get("stop_loss") / 100)
         stop_loss_order_data = sell_order_data.copy()
         stop_loss_order_data["orders"][0].update({
-            "price": round(stop_loss_price, 2) * obj.get('quantity'),
+            "price": round(stop_loss_price, 2),
             "side": "BUY",
             "orderType": "STP",
             "cOID": customer_order_id
         })
 
         stop_loss_response = ibkr.placeOrder(account, stop_loss_order_data)
-        if not handle_order_response(self, task_name, ibkr, stop_loss_response, obj, save_order_data, "BUY", customer_order_id,
-                                     stop_loss=True):
+        handle_order_response(self, task_name, ibkr, stop_loss_response, obj, save_order_data, "BUY", customer_order_id,
+                                     stop_loss=True)
 
-            return
 
         # Place Take Profit Buy Order
         customer_order_id = generate_customer_order_id()
@@ -187,7 +185,7 @@ def place_orders_task(self, user_id, data):
         take_profit_price = obj.get('price')/100 * obj.get("take_profit")
         take_profit_order_data = sell_order_data.copy()
         take_profit_order_data["orders"][0].update({
-            "price": round(take_profit_price, 2) * obj.get('quantity'),
+            "price": round(take_profit_price, 2),
             "side": "BUY",
             "orderType": "LMT",
             "cOID": customer_order_id
@@ -195,10 +193,8 @@ def place_orders_task(self, user_id, data):
         print(take_profit_order_data)
         print("#3" * 10)
         take_profit_response = ibkr.placeOrder(account, take_profit_order_data)
-        if not handle_order_response(self, task_name, ibkr, take_profit_response, obj, save_order_data, "BUY", customer_order_id,
-                                     take_profit=True):
-
-            return
+        handle_order_response(self, task_name, ibkr, take_profit_response, obj, save_order_data, "BUY", customer_order_id,
+                                     take_profit=True)
 
 
     success_details = log_task_status(task_name, message="Order Placed and saved in db.")
@@ -210,20 +206,19 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     """
     Handles order API response, saves the order data, and confirms order if needed.
     """
-
+    response = None
+    error = None
+    order_status = None
+    reply_id = None
     if order_response.get("success"):
-        response = None
-        error = None
         data =  order_response.get("data")
-        print(data)
-        print("$" * 100)
-        print(type(data))
         if isinstance(data, list):
-            order_id = order_response.get("data", [])[0].get("order_id")
-            reply_id = order_response.get("data", [])[0].get("id")
-            print(reply_id)
-            print("#" * 100)
-            response = order_response
+            order_data = order_response.get("data", [])
+            if order_data:
+                order_id = order_data[0].get("order_id")
+                reply_id = order_data[0].get("id")
+
+            response = data[0]
             while reply_id:
                 # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
@@ -237,53 +232,78 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     return False
 
                 # Check if the order_id is present after confirmation
-                order_confirmed_id = confirm_response.get("data", {})[0].get("order_id")
-                if order_confirmed_id:
-                    reply_id = None
-                    response = confirm_response
-                    break  # Order confirmed, exit loop
-
-                reply_id = confirm_response.get("data", {})[0].get("id")
+                order_confirmed_data = confirm_response.get("data", [])
+                if order_confirmed_data:
+                    order_confirmed_id = confirm_response.get("data", [])[0].get("order_id")
+                    if order_confirmed_id:
+                        reply_id = None
+                        response = confirm_response.get('data')[0]
+                        break  # Order confirmed, exit loop
+                order_confirmed_data_reply = confirm_response.get("data", [])
+                if order_confirmed_data_reply:
+                    reply_id = order_confirmed_data_reply[0].get("id")
+        if response:
+            order_status = response.get('order_status')
         else:
+            order_status = ""
             error = data.get("error")
-
-
-        # Save the order data
-        save_order_data.update({
-            'conid': obj.get('conid'),
-            'optionType': obj.get('optionType'),
-            'orderType': 'STP' if stop_loss else 'LMT',
-            'price': obj.get("price"),
-            'side': side,
-            'tif': 'DAY',
-            'quantity': obj.get('quantity'),
-            'limit_sell': obj.get('limit_sell', ''),
-            'stop_loss': obj.get('stop_loss', ''),
-            'take_profit': obj.get('take_profit', ''),
-            'order_api_response': response if not error else error,
-            'customer_order_id': customer_order_id
-        })
-        try:
-            save_order(save_order_data)
-        except IBKRAppError as e:
-            error_details = log_task_status(
-                task_name,
-                exception=e,
-                message="Unable to save order",
-                additional_data={"orderType": side}
-            )
-            self.update_state(state="FAILURE", meta=error_details)
-            return False
     else:
-        error_details = log_task_status(
-            task_name,
-            message=f"Failed to place {side} order.",
-            additional_data={"orderType": side}
-        )
-        self.update_state(state="FAILURE", meta=error_details)
-        return False
+        error = order_response.get("error")
+        response = None
 
-    return True
+
+    # Save the order data
+    save_order_data.update({
+        'conid': obj.get('conid'),
+        'optionType': obj.get('optionType'),
+        'orderType': 'STP' if stop_loss else 'LMT',
+        'price': obj.get("price"),
+        'side': side,
+        'tif': 'DAY',
+        'quantity': obj.get('quantity'),
+        'limit_sell': obj.get('limit_sell', ''),
+        'stop_loss': obj.get('stop_loss', ''),
+        'take_profit': obj.get('take_profit', ''),
+        'order_api_response': response if response else error,
+        'order_status': order_status,
+        'customer_order_id': customer_order_id,
+        'con_desc2': obj.get('desc')
+    })
+    save_order(save_order_data)
+
+
+@shared_task(bind=True)
+def check_order_status_task(self, user_id, task_id):
+    task_name = "check_order_status_task"
+
+    current_date = now().date()
+
+    timer_obj = TimerData.objects.filter(created_at__date=current_date).first()
+
+    if not timer_obj:
+        return "No orders placed today, stopping the task."
+
+    # Instantiate IBKRBase
+    ibkr = IBKRBase()
+
+    orders_to_check = timer_obj.orders.all()
+
+    # Check the order statuses
+    for order in orders_to_check:
+        order_status = ibkr.get_order_status(order.customer_order_id)  # Assuming IBKR class has this method
+
+        if order_status == "FILLED":
+            # Update the status or perform any necessary action
+            order.status = "FILLED"
+            order.save()
+            print(f"Order {order.customer_order_id} is filled.")
+        else:
+            print(f"Order {order.customer_order_id} status: {order_status}")
+
+    # If it's the end of the day, disable the task
+    if now().date() != current_date:
+        print("End of the day reached, disabling the task.")
+        return "Task disabled due to end of the day."
 
 
 def _disable_task_and_update_status(onboarding_obj, task_id, task_name):

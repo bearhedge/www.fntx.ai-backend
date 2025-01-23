@@ -48,6 +48,26 @@ class IBKRBase:
             return {"success": False, "error": "Unable to authenticate with IBKR API", "status": 500}
 
 
+    def account_summary(self):
+        acc_response = self.brokerage_accounts()
+        if acc_response.get('success'):
+            accounts = acc_response.get('data', {}).get('accounts')
+            if accounts:
+                account = accounts[0]
+        else:
+            return {"success": False, "error": acc_response.get("error"),
+                    "status": acc_response.get("status")}
+
+        try:
+            response = requests.get(f"{self.ibkr_base_url}/portfolio/{account}/summary", verify=False)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False,
+                        "error": "Unable to authenticate with IBKR API. Please login on client portal.",
+                        "status": response.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": "Unable to authenticate with IBKR API", "status": 500}
 
     def get_spy_conId(self, symbol):
         """
@@ -65,7 +85,6 @@ class IBKRBase:
     def fetch_strikes(self, contract_id, month):
         try:
             response = requests.get(f"{self.ibkr_base_url}/iserver/secdef/strikes?conid={contract_id}&sectype=OPT&month={month}", verify=False)
-            print(response.content)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
@@ -115,9 +134,24 @@ class IBKRBase:
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
-                return {"success": False, "status": response.status_code}
+                return {"success": False, "status": response.status_code, "error": response.content}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
+
+
+    def orderStatus(self, order_id):
+        try:
+            print("======================")
+            url = f"{self.ibkr_base_url}/iserver/account/order/status/{order_id}"
+            response = requests.get(url, verify=False)
+            print(response.text)
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "status": response.status_code, "error": response.text}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e), "status": 500}
+
 
     def cancelOrder(self, order_id, account_id):
         try:
@@ -126,7 +160,7 @@ class IBKRBase:
             if response.status_code == 200:
                 return {"success": True}
             else:
-                return {"success": False, "status": response.status_code}
+                return {"success": False, "status": response.status_code, "error": response.text}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
 
@@ -189,6 +223,3 @@ class IBKRBase:
                 return {"success": False, "status": response.status_code}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e), "status": 500}
-
-
-

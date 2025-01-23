@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 
+from core.constants import ACCOUNT_SUMMARY_KEYS
 from core.exceptions import IBKRAPIError
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData, PlaceOrder
@@ -74,22 +75,27 @@ class AuthStatusView(APIView, IBKRBase):
 
 
 @extend_schema(tags=["IBKR"])
-class AccountSummaryView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
+class AccountSummaryView(APIView, IBKRBase):
+    permission_classes = [IsAuthenticated]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        IBKRBase.__init__(self)
 
     def get(self, request, *args, **kwargs):
         try:
-            ibkr_base_url = settings.IBKR_BASE_URL
-            account_id = "U15796707"
-            response = requests.get(f"{ibkr_base_url}/portfolio/{account_id}/summary", verify=False)
+            response = self.account_summary()
+            if response.get('success'):
+                data = response.get('data', {})
 
-            if response.status_code == 200:
-                return Response(response.json(), status=status.HTTP_200_OK)
+                # Filter the data to include only the required keys
+                filtered_data = {key: data.get(key) for key in ACCOUNT_SUMMARY_KEYS if key in data}
+
+                return Response(filtered_data, status=status.HTTP_200_OK)
             else:
                 return Response(
                     {"error": "Failed to fetch account summary"},
-                    status=response.status_code
+                    status=response.get("status")
                 )
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -488,7 +494,7 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = PlaceOrderSerializer
     serializer_list_class = PlaceOrderListSerializer
-    http_method_names = ['post', 'get']
+    http_method_names = ['post', 'get', 'delete']
     queryset = PlaceOrder.objects.all()
 
     def __init__(self, *args, **kwargs):
@@ -499,6 +505,7 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
         if self.action == 'list':
             return self.serializer_list_class
         return self.serializer_class
+
 
     def create(self, request):
         authentication = self.auth_status()
@@ -523,63 +530,41 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
 
 
     def list(self, request, *args, **kwargs):
-        ibkr_orders = []
         queryset = self.get_queryset()
-        queryset = queryset.filter(user=request.user, is_deleted=False)
+        queryset = queryset.filter(user=request.user, is_cancelled=False, created_at__date=now().date())
         serializer = self.get_serializer(queryset, many=True)
-        ibkr_orders_response = self.retrieveOrders()
-        if ibkr_orders_response.get('success'):
-            ibkr_orders = ibkr_orders_response.get('data')
-        return Response({"ibkr_orders": ibkr_orders, "data":serializer.data}, status=status.HTTP_200_OK)
+        return Response({"data":serializer.data}, status=status.HTTP_200_OK)
 
-    @extend_schema(summary="Cancel a placed order")
-    @action(detail=False, methods=["post"], url_path="cancel", url_name="cancel")
-    def cancel_order(self, request):
+    def destroy(self, request, *args, **kwargs):
         """
-        Cancels a placed order based on cOID and orderId received from the frontend.
+            This method will not delete the order instead it will cancel the order.
         """
-        cOID = request.data.get("cOID")
-        order_id = request.data.get("orderId")
-        account_id = request.data.get("accountId")
+        order = self.get_object()
+        if order.is_cancelled:
+            return Response({"error": f"Order with id {order.id} is already cancelled. "})
+        account = None
+        acc_response = self.brokerage_accounts()
+        if acc_response.get('success'):
+            accounts = acc_response.get('data', {}).get('accounts')
+            if accounts:
+                account = accounts[0]
+        else:
+            return Response({"error": acc_response.get("error")}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not cOID or not order_id or not account_id:
-            return Response(
-                {"detail": "All cOID, orderId, accountId are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            order = PlaceOrder.objects.get(customer_order_id=cOID)
-
-            cancel_response = self.cancelOrder(order_id, account_id)
-
-            if cancel_response.get("success"):
-                order.is_deleted = True
-                order.save()
-
-                return Response(
-                    {"detail": f"Order {cOID} with orderId {order_id} has been cancelled successfully."},
-                    status=status.HTTP_200_OK,
-                )
+        if order:
+            order_api_payload = order.order_api_response
+            order_id = order_api_payload.get("order_id")
+            if order_id:
+                cancel_order = self.cancelOrder(order_id, account)
+                if not cancel_order.get('success'):
+                    return Response({"error": f"Unable to delete order with id {order.id}"})
+                else:
+                    order.order_status = "Cancelled"
+                    order.is_cancelled = True
+                    order.save()
             else:
-                return Response(
-                    {
-                        "detail": f"Failed to cancel order {cOID} with orderId {order_id}.",
-                        "error": cancel_response.get("message"),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except PlaceOrder.DoesNotExist:
-            return Response(
-                {"detail": f"Order with cOID {cOID} not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        except Exception as e:
-            return Response(
-                {"detail": "An unexpected error occurred.", "error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
+                return Response({"error": f"Order with id {order.id} didn't get placed."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=["IBKR"])
@@ -596,4 +581,16 @@ class IBKRTokenView(APIView, IBKRBase):
             return Response({'error': 'Unable to authenticate with IBKR API. Please login on client portal.'}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(session_token, status=status.HTTP_200_OK)
+
+@extend_schema(tags=["SYSTEM"])
+class ClosePositionView(APIView, IBKRBase):
+    permission_classes = [IsAuthenticated]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        IBKRBase.__init__(self)
+
+    def post(self, request):
+        data = request.data
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

@@ -97,51 +97,26 @@ class SystemDataSerializer(serializers.ModelSerializer):
                                 break
                     if valid_contract:
                         break
+            validated_data['contract_month'] = month
             if not valid_contract:
                 raise serializers.ValidationError({"error": "Cannot use this Contract ID as it is not for options trading."})
 
             if contract_id:
                 validated_data['contract_id'] = contract_id
-
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                task_name = f"Fetch and Validate Strikes for {contract_id} - {user} - {current_date}"
-
-                schedule, _ = IntervalSchedule.objects.get_or_create(
-                    every=1,
-                    period=IntervalSchedule.MINUTES
-                )
-
-                existing_task = PeriodicTask.objects.filter(name=task_name)
-                if existing_task:
-                    existing_task.delete()
-
-                task = PeriodicTask.objects.create(
-                    interval=schedule,
-                    name=task_name,
-                    task='ibkr.tasks.fetch_and_save_strikes')
-
-                task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(task.id)])
-                task.save()
-                validated_data['validate_strikes_task'] = task
                 validated_data['ticker_data'] = ticker
 
         created_instance = SystemData.objects.create(**validated_data)
 
-        fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
-
         return created_instance
 
     def update(self, instance, validated_data):
-        today = now().date()
-        task = None
         symbol = validated_data.pop('ticker_data')
-        user = validated_data.get('user')
         ibkr = IBKRBase()
         contract_id = None
         ticker = None
+        month = None
 
         valid_contract = False
-        month = None
         if symbol:
             search_spy_data = ibkr.get_spy_conId(symbol)
             data = search_spy_data.get('data') if search_spy_data.get('success') else []
@@ -167,39 +142,13 @@ class SystemDataSerializer(serializers.ModelSerializer):
             # Update the instance with the new contract_id
             if contract_id and contract_id != instance.contract_id:
                 validated_data['contract_id'] = contract_id
-
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                task_name = f"Fetch and Validate Strikes for {contract_id} - {user} - {current_date}"
-                schedule, _ = IntervalSchedule.objects.get_or_create(
-                    every=3,
-                    period=IntervalSchedule.MINUTES
-                )
-
-                # Update the associated periodic task or create a new one if does not exist
-                if instance.validate_strikes_task:
-                    task = instance.validate_strikes_task
-                    task.interval = schedule
-                    task.args = json.dumps([contract_id, str(validated_data["user"].id), month, str(today), str(instance.validate_strikes_task.id)])
-                    task.name = task_name
-                    task.save()
-                else:
-                    task = PeriodicTask.objects.create(
-                        interval=schedule,
-                        name=task_name,
-                        task='ibkr.tasks.fetch_and_save_strikes',
-                    )
-                    task.args = json.dumps([contract_id, str(validated_data["user"]), month, str(today), str(task.id)])
-                    task.save()
-                    validated_data['validate_strikes_task'] = task
                 validated_data['ticker_data'] = ticker
+                validated_data['contract_month'] = month
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
-        if task and contract_id:
-            fetch_and_save_strikes.delay(contract_id, str(validated_data["user"].id), month, str(today), str(task.id))
-
         return instance
 
 class SystemDataListSerializer(serializers.ModelSerializer):
@@ -252,7 +201,6 @@ class HistoryDataSerializer(serializers.Serializer):
     conid = serializers.IntegerField()
 
     def validate(self, data):
-        print(data)
         if not data.get('bar') or not data.get('conid'):
             raise serializers.ValidationError({"error": "Bar and conId are required parameter. Please make sure you send them."})
         return data
@@ -321,4 +269,3 @@ class PlaceOrderListSerializer(serializers.ModelSerializer):
         model = PlaceOrder
         fields = "__all__"
         depth = 1
-
