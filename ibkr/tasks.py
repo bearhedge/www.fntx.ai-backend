@@ -221,6 +221,7 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
             # Confirm the order if reply_id is present
             while reply_id:
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
+                print(confirm_response, "=================confirmresponse")
                 if not confirm_response.get("success"):
                     error = confirm_response.get("error")
                     break
