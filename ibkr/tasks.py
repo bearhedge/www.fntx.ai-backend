@@ -134,7 +134,8 @@ def place_orders_task(self, user_id, data):
         if accounts:
             # Fetch the first ID of the account
             account = accounts[0]
-
+    print("data from frontend")
+    print(data)
     user_obj = CustomUser.objects.filter(id=user_id).first()
     timer_obj = TimerData.objects.filter(user=user_obj, created_at__date=now().date()).first()
     save_order_data = {"user": user_obj, "accountId": account}
