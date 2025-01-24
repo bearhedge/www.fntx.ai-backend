@@ -208,7 +208,8 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     response = None
     error = None
     order_status = ""
-
+    print(order_response)
+    print("#" * 100)
     if order_response.get("success"):
         data = order_response.get("data", [])
         if isinstance(data, list) and data:
