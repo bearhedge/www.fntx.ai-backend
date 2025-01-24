@@ -236,7 +236,9 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     else:
                         reply_id = confirmed_data.get("id")
                 else:
-                    error = confirm_response.get("error")
+                    data = confirm_response.get("data")
+                    if data:
+                        error = data.get('error')
                     break
 
         if response:
