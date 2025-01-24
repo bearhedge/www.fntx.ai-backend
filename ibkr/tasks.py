@@ -3,7 +3,6 @@ from datetime import timedelta, datetime
 
 import requests
 
-
 from celery import shared_task
 from django.conf import settings
 from django.utils.timezone import now
@@ -11,7 +10,7 @@ from django_celery_beat.models import PeriodicTask
 
 from accounts.models import CustomUser
 from core.celery_response import log_task_status
-from core.exceptions import IBKRValueError, IBKRAppError
+from core.exceptions import IBKRValueError
 from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TimerData, Strikes
 from ibkr.utils import calculate_strike_range_and_save, save_order, generate_customer_order_id
@@ -208,51 +207,42 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     """
     response = None
     error = None
-    order_status = None
-    reply_id = None
-    if order_response.get("success"):
-        data =  order_response.get("data")
-        if isinstance(data, list):
-            order_data = order_response.get("data", [])
-            if order_data:
-                order_id = order_data[0].get("order_id")
-                reply_id = order_data[0].get("id")
+    order_status = ""
 
-            response = data[0]
+    if order_response.get("success"):
+        data = order_response.get("data", [])
+        if isinstance(data, list) and data:
+            order_data = data[0]
+            order_id = order_data.get("order_id")
+            reply_id = order_data.get("id")
+            response = order_data
+
+            # Confirm the order if reply_id is present
             while reply_id:
-                # Attempt to confirm the order
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
                 if not confirm_response.get("success"):
-                    error_details = log_task_status(
-                        task_name,
-                        message=f"Failed to confirm order reply for {side} order.",
-                        additional_data={"replyId": reply_id}
-                    )
-                    self.update_state(state="FAILURE", meta=error_details)
-                    return False
+                    error = confirm_response.get("error")
+                    break
 
-                # Check if the order_id is present after confirmation
-                order_confirmed_data = confirm_response.get("data", [])
-                if order_confirmed_data:
-                    order_confirmed_id = confirm_response.get("data", [])[0].get("order_id")
+                confirm_data = confirm_response.get("data", [])
+                if confirm_data and isinstance(confirm_data, list):
+                    confirmed_data = confirm_data[0]
+                    order_confirmed_id = confirmed_data.get("order_id")
                     if order_confirmed_id:
                         reply_id = None
-                        response = confirm_response.get('data')[0]
-                        break  # Order confirmed, exit loop
-                order_confirmed_data_reply = confirm_response.get("data", [])
-                if order_confirmed_data_reply:
-                    reply_id = order_confirmed_data_reply[0].get("id")
+                        response = confirmed_data
+                    else:
+                        reply_id = confirmed_data.get("id")
+                else:
+                    error = confirm_response.get("error")
+                    break
+
         if response:
-            order_status = response.get('order_status')
-        else:
-            order_status = ""
-            error = data.get("error")
+            order_status = response.get("order_status", "")
     else:
         error = order_response.get("error")
-        response = None
 
-
-    # Save the order data
+    # Save the order data regardless of success or error
     save_order_data.update({
         'conid': obj.get('conid'),
         'optionType': obj.get('optionType'),

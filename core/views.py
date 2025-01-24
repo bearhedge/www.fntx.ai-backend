@@ -59,6 +59,9 @@ class IBKRBase:
                     "status": acc_response.get("status")}
 
         try:
+            request_url = f"{self.ibkr_base_url}/portfolio/accounts"
+            requests.get(url=request_url, verify=False)
+            time.sleep(0.5)
             response = requests.get(f"{self.ibkr_base_url}/portfolio/{account}/summary", verify=False)
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}

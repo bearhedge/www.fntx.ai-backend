@@ -494,7 +494,7 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = PlaceOrderSerializer
     serializer_list_class = PlaceOrderListSerializer
-    http_method_names = ['post', 'get', 'delete']
+    http_method_names = ['post', 'get', 'delete', 'put']
     queryset = PlaceOrder.objects.all()
 
     def __init__(self, *args, **kwargs):

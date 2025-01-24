@@ -219,10 +219,11 @@ class ChartsData(BaseConsumer):
                 continue
 
             ticker_data = await self.fetch_live_data(self.contract_id)
-            if ticker_data:
+            if ticker_data and isinstance(ticker_data, list):
                 timestamp_ms = ticker_data[0].get("_updated")
-                timestamp_s = timestamp_ms / 1000
-                iso_date = datetime.datetime.utcfromtimestamp(timestamp_s).isoformat() + "Z"
+                if timestamp_ms:
+                    timestamp_s = timestamp_ms / 1000
+                    iso_date = datetime.datetime.utcfromtimestamp(timestamp_s).isoformat() + "Z"
                 price = ticker_data[0].get("31")
                 if not price:
                     continue
