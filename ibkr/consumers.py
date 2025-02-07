@@ -247,7 +247,7 @@ class ChartsData(BaseConsumer):
                 await asyncio.sleep(0.1)
                 continue
             history_data = self.ibkr.historical_data(self.contract_id, '1min', '5min')
-
+            print(history_data, "=====================")
             if history_data.get('success'):
                 try:
                     formatted_data = transform_ibkr_data(history_data.get('data'), self.contract_id)
