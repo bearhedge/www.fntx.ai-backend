@@ -249,6 +249,7 @@ class ChartsData(BaseConsumer):
 
     async def candle_data(self):
         while self.keep_running:
+            print("-------------------------------candle-data-started------------------------------")
             if not self.contract_id:
                 await asyncio.sleep(0.1)
                 continue
@@ -267,7 +268,7 @@ class ChartsData(BaseConsumer):
                 await asyncio.sleep(0)
 
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
 
 class StreamOptionData(BaseConsumer):
