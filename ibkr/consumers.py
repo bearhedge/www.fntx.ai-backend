@@ -254,8 +254,10 @@ class ChartsData(BaseConsumer):
             if not self.contract_id:
                 await asyncio.sleep(0.1)
                 continue
-            history_data = self.ibkr.historical_data(self.contract_id, '1min', '1min')
-            print(history_data, "=====================")
+
+            history_data = await asyncio.to_thread(
+                self.ibkr.historical_data, self.contract_id, '5min', '1d'
+            )
             if history_data.get('success'):
                 try:
                     formatted_data = transform_ibkr_data(history_data.get('data'), self.contract_id)
