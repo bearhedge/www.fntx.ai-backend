@@ -212,7 +212,6 @@ class ChartsData(BaseConsumer):
 
     async def receive(self, text_data):
         try:
-            print("-----------------------------received---------------------------------")
             data = json.loads(text_data)
             ticker = data.get("ticker")
             authentication = self.ibkr.auth_status()
@@ -230,7 +229,6 @@ class ChartsData(BaseConsumer):
                 await self.send(text_data=json.dumps({"error": f"Unable to select contract for the selected ticker {ticker}"}))
                 await self.close()
                 return
-            print("task----starting")
             self.candle_graph_task = asyncio.create_task(self.candle_data())
             self.prices_task = asyncio.create_task(self.updated_prices())
         except Exception as e:
