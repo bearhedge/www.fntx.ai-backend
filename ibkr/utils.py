@@ -113,15 +113,15 @@ def generate_customer_order_id():
     """
 
     last_order = PlaceOrder.objects.annotate(
-        numeric_id=Cast(Substr('customer_order_id', 15), IntegerField())
+        numeric_id=Cast(Substr('customer_order_id', 10), IntegerField())
     ).aggregate(max_id=Max('numeric_id'))['max_id']
 
     if last_order:
         next_order_num = last_order + 1
-        new_order_id = f"ordersssss-id-{next_order_num}"
+        new_order_id = f"order-id-{next_order_num}"
 
     else:
-        new_order_id = "ordersssss-id-1"
+        new_order_id = "order-id-1"
 
     return new_order_id
 

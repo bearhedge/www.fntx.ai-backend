@@ -245,7 +245,6 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     else:
         error = order_response.get("error")
     # Save the order data regardless of success or error
-    print(obj, "============")
     save_order_data.update({
         'conid': obj.get('conid'),
         'optionType': obj.get('optionType'),

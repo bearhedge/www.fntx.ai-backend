@@ -197,7 +197,6 @@ class ChartsData(BaseConsumer):
 
 
     async def disconnect(self, code):
-        print("=======================")
         if self.candle_graph_task:
             self.candle_graph_task.cancel()
         if self.prices_task:
