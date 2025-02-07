@@ -113,26 +113,29 @@ def generate_customer_order_id():
     """
 
     last_order = PlaceOrder.objects.annotate(
-        numeric_id=Cast(Substr('customer_order_id', 10), IntegerField())
+        numeric_id=Cast(Substr('customer_order_id', 15), IntegerField())
     ).aggregate(max_id=Max('numeric_id'))['max_id']
 
     if last_order:
         next_order_num = last_order + 1
-        new_order_id = f"order-id-{next_order_num}"
+        new_order_id = f"ordersssss-id-{next_order_num}"
 
     else:
-        new_order_id = "order-id-1"
+        new_order_id = "ordersssss-id-1"
 
     return new_order_id
 
-def transform_ibkr_data(api_response):
+def transform_ibkr_data(api_response, conid=None):
     data = api_response.pop('data', [])
     transformed_data = []
+    highest_closing_prices = [entry.get('c', 0) for entry in data]
+    closing_price = max(highest_closing_prices)
 
     for index, bar in enumerate(data):
         timestamp_ms = bar["t"]
         timestamp_s = timestamp_ms / 1000
-        iso_date = datetime.datetime.utcfromtimestamp(timestamp_s).isoformat() + "Z"
+        utc_datetime = datetime.utcfromtimestamp(timestamp_s)
+        iso_date = utc_datetime.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
 
         transformed_data.append({
             "date": iso_date,
@@ -152,5 +155,6 @@ def transform_ibkr_data(api_response):
             }
         })
     api_response['data'] = transformed_data
-
+    api_response['conId'] = conid
+    api_response['at_Close'] = closing_price
     return api_response

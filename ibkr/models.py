@@ -92,6 +92,8 @@ class TimerData(BaseModel):
     original_time_start = models.TimeField(blank=True, null=True)
     start_time = models.TimeField()
     place_order = models.CharField(max_length=5, blank=True, null=True)
+    system_data = models.ForeignKey(SystemData, on_delete=models.CASCADE, blank=True, null=True)
+
 
     def __str__(self):
         return f"{self.timer_value}-{self.user.email}-{self.created_at}"
@@ -116,7 +118,7 @@ class PlaceOrder(BaseModel):
         ('FOK', 'FOK'), #Fill-or-Kill
         ('DTC', 'DTC'), #Day Til Cancelled
     ]
-
+    system_data = models.ForeignKey(SystemData, on_delete=models.SET_NULL, blank=True, null=True)
     user = models.ForeignKey(CustomUser, on_delete= models.CASCADE)
     accountId = models.CharField(max_length=100)
     conid = models.IntegerField()
@@ -137,7 +139,7 @@ class PlaceOrder(BaseModel):
     is_cancelled = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.user.username} - {self.conid} - {self.quantity}"
+        return f"{self.user.username} - {self.conid} - {self.quantity} - {self.created_at}"
 
 
 class Strikes(BaseModel):

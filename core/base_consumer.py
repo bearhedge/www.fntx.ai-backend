@@ -106,7 +106,6 @@ class BaseConsumer(AsyncWebsocketConsumer):
         Calculate valid strikes based on the last-day price and fetch live data for these strikes.
         """
         while self.keep_running:
-
             if not self.last_day_price:
                 await asyncio.sleep(0.1)
                 continue
@@ -127,7 +126,6 @@ class BaseConsumer(AsyncWebsocketConsumer):
                 put_strikes = [strike for strike in all_put_strikes if strike <= self.last_day_price][-range_count:]
 
                 valid_strikes = set(call_strikes + put_strikes)
-
                 # Convert self.strike_data_list to a dictionary for easy updates
                 current_strike_data = {entry["strike"]: entry for entry in self.strike_data_list}
 
@@ -141,6 +139,7 @@ class BaseConsumer(AsyncWebsocketConsumer):
                     data = strike_info_response.get('data')
                     for obj in data:
                         maturity_date = obj.get("maturityDate")
+
                         if maturity_date and int(maturity_date) == int(datetime.now().strftime("%Y%m%d")):
                             strike_info = obj
                             break

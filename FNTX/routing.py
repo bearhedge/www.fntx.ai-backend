@@ -6,5 +6,4 @@ websocket_urlpatterns = [
     re_path(r'trades-management', TradeManagementConsumer.as_asgi()),
     re_path(r'option-stream/strikes', StreamOptionData.as_asgi()),
     re_path(r'option-stream/candle-stick', ChartsData.as_asgi())
-
 ]

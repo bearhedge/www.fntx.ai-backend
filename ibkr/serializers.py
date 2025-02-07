@@ -46,7 +46,7 @@ class InstrumentSerializer(serializers.ModelSerializer):
 class TimerDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimerData
-        fields = ['timer_value', 'start_time', 'original_timer_value', 'original_time_start']
+        fields = ['timer_value', 'start_time', 'original_timer_value', 'original_time_start', 'system_data']
 
 
 class TimerDataListSerializer(serializers.ModelSerializer):
@@ -61,8 +61,7 @@ class TimerDataListSerializer(serializers.ModelSerializer):
 
         end_datetime = start_datetime + timedelta(minutes=obj.original_timer_value)
 
-        # Format the time as HH:MM
-        return end_datetime.strftime('%H:%M')
+        return end_datetime.strftime('%H:%M:%S.%f')
 
 
 class SystemDataSerializer(serializers.ModelSerializer):
@@ -201,8 +200,8 @@ class HistoryDataSerializer(serializers.Serializer):
     conid = serializers.IntegerField()
 
     def validate(self, data):
-        if not data.get('bar') or not data.get('conid'):
-            raise serializers.ValidationError({"error": "Bar and conId are required parameter. Please make sure you send them."})
+        if not data.get('bar'):
+            raise serializers.ValidationError({"error": "Bar is required parameter. Please make sure you send it."})
         return data
 
     def get_market_data(self, conid, period):
@@ -242,10 +241,122 @@ class HistoryDataSerializer(serializers.Serializer):
             data['market_data_error'] = str(e)
         return data
 
-class PlaceOrderSerializer(serializers.ModelSerializer):
+class UpdateOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceOrder
         fields = ['conid', 'price', 'quantity', 'limit_sell', 'stop_loss', 'take_profit', 'optionType']
+
+    def update(self, instance, validated_data):
+        """
+            Modify the order if certain fields are changed.
+        """
+        # Fields that trigger a modify API call
+        if instance.order_status in ['Cancelled', 'pending_cancel']:
+            raise serializers.ValidationError({"error": "Cannot modify this order as it has been already cancelled."})
+        elif instance.order_status == 'Filled':
+            raise serializers.ValidationError({"error": "Cannot modify this order as it has been already filled."})
+
+        fields_to_check = ['limit_sell', 'stop_loss', 'take_profit']
+        modified_field = None
+
+        for field in fields_to_check:
+            new_value = validated_data.get(field)
+            current_value = getattr(instance, field)
+            if new_value and new_value != current_value:
+                modified_field = field
+                break
+
+        if modified_field:
+            instance = self.modify_orders(instance, validated_data, modified_field)
+
+        return instance
+
+    def modify_orders(self, instance, validated_data, modified_field):
+        """
+        Call the IBKR modify order API with the updated fields.
+        """
+        order_id = instance.order_api_response.get("order_id")
+        print(validated_data, modified_field)
+        if validated_data.get(modified_field) == 'stop_loss':
+            price = instance.price + instance.price * (validated_data.get(modified_field) / 100)
+        elif validated_data.get(modified_field) == 'take_profit':
+            price = instance.price/100 * validated_data.get(modified_field)
+        else:
+            price = validated_data.get(modified_field)
+
+
+        order_data = {
+            "acctId": instance.accountId,
+            "conid": instance.conid,
+            "orderType": instance.orderType,
+            "price": price,
+            "side": instance.side,
+            "tif": instance.tif,
+            "quantity": instance.quantity
+        }
+
+        ibkr = IBKRBase()
+        order_response = ibkr.modifyOrder(order_id, instance.accountId, order_data)
+        response = None
+        error = None
+        order_status = None
+        if order_response.get('success'):
+            data = order_response.get("data", [])
+            if isinstance(data, list) and data:
+                order_data = data[0]
+                order_id = order_data.get("order_id")
+                reply_id = order_data.get("id")
+                response = order_data
+
+                # Confirm the order if reply_id is present
+                while reply_id:
+                    confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
+
+                    if not confirm_response.get("success"):
+                        error = confirm_response.get("error")
+                        break
+
+                    confirm_data = confirm_response.get("data", [])
+                    print(confirm_data, "confirm_data")
+                    if confirm_data and isinstance(confirm_data, list):
+                        confirmed_data = confirm_data[0]
+                        order_confirmed_id = confirmed_data.get("order_id")
+                        if order_confirmed_id:
+                            reply_id = None
+                            response = confirmed_data
+                        else:
+                            reply_id = confirmed_data.get("id")
+                    else:
+                        data = confirm_response.get("data")
+                        if data:
+                            error = data.get('error')
+                        break
+            else:
+                error = order_response.get('data')
+            if response:
+                order_status = response.get("order_status", "")
+        else:
+            error = order_response.get("error")
+
+        if error:
+            raise serializers.ValidationError({"error": "Failed to modify order with IBKR API."})
+        instance.order_api_response = response
+        if modified_field == 'limit_sell':
+            instance.limit_sell = validated_data.get(modified_field)
+        elif modified_field == 'stop_loss':
+            instance.stop_loss = validated_data.get(modified_field)
+        elif modified_field == 'take_profit':
+            instance.take_profit = validated_data.get(modified_field)
+        instance.order_status = order_status
+
+        instance.save()
+
+        return instance
+
+class PlaceOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceOrder
+        fields = ['conid', 'price', 'quantity', 'limit_sell', 'stop_loss', 'take_profit', 'optionType', 'system_data']
 
     def validate(self, data):
         stop_loss = data.get('stop_loss')
@@ -269,3 +380,27 @@ class PlaceOrderListSerializer(serializers.ModelSerializer):
         model = PlaceOrder
         fields = "__all__"
         depth = 1
+
+
+class DashBoardSerializer(serializers.ModelSerializer):
+    orders = serializers.SerializerMethodField()
+    timer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SystemData
+        exclude = ('user',)
+        depth = 1
+
+    def get_timer(self, obj):
+        timer_instance = TimerData.objects.filter(system_data=obj).first()
+        if timer_instance:
+            serailized_data = TimerDataListSerializer(timer_instance).data
+            return serailized_data
+        return {}
+
+    def get_orders(self, obj):
+        request = self.context.get('request')
+        user_orders = PlaceOrder.objects.filter(user=request.user, system_data=obj)
+
+        serializer_data = PlaceOrderListSerializer(user_orders, many=True).data
+        return serializer_data

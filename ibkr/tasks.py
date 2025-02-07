@@ -209,8 +209,6 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
     response = None
     error = None
     order_status = ""
-    print(order_response)
-    print("#" * 100)
     if order_response.get("success"):
         data = order_response.get("data", [])
         if isinstance(data, list) and data:
@@ -222,7 +220,6 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
             # Confirm the order if reply_id is present
             while reply_id:
                 confirm_response = ibkr.replyOrder(reply_id, {"confirmed": True})
-                print(confirm_response, "=================confirmresponse")
                 if not confirm_response.get("success"):
                     error = confirm_response.get("error")
                     break
@@ -241,13 +238,14 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
                     if data:
                         error = data.get('error')
                     break
-
+        else:
+            error = order_response.get("data")
         if response:
             order_status = response.get("order_status", "")
     else:
         error = order_response.get("error")
-
     # Save the order data regardless of success or error
+    print(obj, "============")
     save_order_data.update({
         'conid': obj.get('conid'),
         'optionType': obj.get('optionType'),
@@ -262,7 +260,8 @@ def handle_order_response(self, task_name, ibkr, order_response, obj, save_order
         'order_api_response': response if response else error,
         'order_status': order_status,
         'customer_order_id': customer_order_id,
-        'con_desc2': obj.get('desc')
+        'con_desc2': obj.get('desc'),
+        'system_data_id': obj.get('system_data')
     })
     save_order(save_order_data)
 

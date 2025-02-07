@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import json
 
 from channels.db import database_sync_to_async
@@ -8,6 +7,7 @@ from asgiref.sync import sync_to_async
 
 from core.base_consumer import BaseConsumer
 from .models import TimerData, PlaceOrder
+from .utils import transform_ibkr_data
 
 
 class StrikesConsumer(BaseConsumer):
@@ -76,6 +76,7 @@ class TradeManagementConsumer(BaseConsumer):
         self.placed_orders_status = None
         self.orders = None
         self.Pnl_tasks = []
+        self.orders_list = []
 
 
     async def connect(self):
@@ -95,87 +96,89 @@ class TradeManagementConsumer(BaseConsumer):
         await super().disconnect(code)
 
     async def orders_status(self):
-        while self.keep_running:
-            if not self.orders:
-                await asyncio.sleep(0.1)
-                continue
+        try:
+            while self.keep_running:
+                if not self.orders:
+                    await asyncio.sleep(0.1)
+                    continue
 
-            orders_dict = {
-                "call": {"limit_sell": {"status": "", "order_id": ""}, "take_profit": {"status": "", "order_id": ""},
-                         "stop_loss": {"status": "", "order_id": ""}},
-                "put": {"limit_sell": {"status": "", "order_id": ""}, "take_profit": {"status": "", "order_id": ""},
-                        "stop_loss": {"status": "", "order_id": ""}}
-            }
-            for order in self.orders:
-                if order.order_status == "Filled" and not any(task.get_name() == str(order.id) for task in self.Pnl_tasks):
-                    task = asyncio.create_task(self.calculate_pnl(order))
-                    task.set_name(str(order.id))
-                    self.Pnl_tasks.append(task)
-                order_id = None
-                order_status = ""
+                for order in self.orders:
+                    if order.order_status == "Filled" and not any(task.get_name() == str(order.id) for task in self.Pnl_tasks):
+                        task = asyncio.create_task(self.calculate_pnl(order))
+                        task.set_name(str(order.id))
+                        self.Pnl_tasks.append(task)
+                    order_id = None
+                    order_status = ""
 
-                order_payload = order.order_api_response
-                if not order_payload or order_payload.get('error'):
-                    order_status = "Cancelled"
-                elif order_payload.get('cqe', {}).get('rejections', ''):
-                    order_status = "Cancelled"
-                else:
-                    order_id = order_payload.get('order_id')
-
-                if order_id:
-                    response = self.ibkr.orderStatus(order_id)
-                    if not response.get('success'):
-                        order_status = ""
+                    order_payload = order.order_api_response
+                    if not order_payload:
+                        order_status = "Cancelled"
+                    elif order_payload.get('error'):
+                        order_status = "Cancelled"
+                    elif order_payload.get('cqe', {}).get('rejections', ''):
+                        order_status = "Cancelled"
                     else:
-                        order_status = response.get('data').get('order_status')
-                        average_price = response.get('data').get('average_price')
-                        order.order_status = order_status
-                        order.average_price = average_price if average_price else 0.0
-                        await database_sync_to_async(order.save)()
+                        order_id = order_payload.get('order_id')
+                    if order_id:
+                        response = self.ibkr.orderStatus(order_id)
+                        if not response.get('success'):
+                            order_status = ""
+                        else:
+                            order_status = response.get('data').get('order_status')
+                            average_price = response.get('data').get('average_price')
+                            order.order_status = order_status
+                            order.average_price = average_price if average_price else 0.0
+                            await database_sync_to_async(order.save)()
 
-                key = (
-                    "limit_sell" if order.orderType == "LMT" and order.side == "SELL" else
-                    "take_profit" if order.orderType == "LMT" and order.side == "BUY" else
-                    "stop_loss"
-                )
+                    found = False
+                    for order_item in self.orders_list:
+                        if str(order.id) in order_item:
+                            order_item[str(order.id)] = order_status
+                            found = True
+                            break
 
-                orders_dict[order.optionType][key]["status"] = order_status
-                orders_dict[order.optionType][key]["order_id"] = str(order.id)
+                    if not found:
+                        self.orders_list.append({str(order.id): order_status})
 
 
-                # Send the updated data immediately
-                await self.send(text_data=json.dumps(orders_dict))
-                await asyncio.sleep(0)
 
-            await asyncio.sleep(2)
+                    # Send the updated data immediately
+                    await self.send(text_data=json.dumps(self.orders_list))
+                    await asyncio.sleep(0)
+
+                await asyncio.sleep(2)
+        except Exception as e:
+            print(e.args)
 
     async def calculate_pnl(self, order):
-        entry_price = await self.fetch_last_day_price(order.conid)
-        sold_price = order.average_price
-        quantity = order.quantity
+        while self.keep_running:
+            entry_price = await self.fetch_last_day_price(order.conid)
+            sold_price = order.average_price
+            quantity = order.quantity
 
-        if entry_price is None or sold_price is None:
-            return
+            if entry_price is None or sold_price is None:
+                return
 
-        # Calculate Realized P&L (Profit or Loss)
-        pnl = (sold_price - entry_price) * quantity
+            # Calculate Realized P&L (Profit or Loss)
+            pnl = (sold_price - entry_price) * quantity
 
-        pnl_data = {
-            'contract': order.con_desc2,
-            'volume': order.quantity,
-            'sold_price': sold_price,
-            'current_price': entry_price,
-            'pnl': pnl,
-            'order_id': order.id,
-        }
+            pnl_data = {
+                'contract': order.con_desc2,
+                'volume': order.quantity,
+                'sold_price': sold_price,
+                'current_price': entry_price,
+                'pnl': pnl,
+                'order_id': order.id,
+            }
 
-        await self.send(text_data=json.dumps(pnl_data))
-        await asyncio.sleep(0)
+            await self.send(text_data=json.dumps(pnl_data))
+            await asyncio.sleep(1.5)
 
     @sync_to_async
     def fetch_today_orders(self):
         # This method runs in a synchronous thread to avoid async ORM conflicts
-        return list(PlaceOrder.objects.filter(user=self.userObj, created_at__date=now().date()))
+        date = now().date()
+        return list(PlaceOrder.objects.filter(user=self.userObj, created_at__date=date))
 
 
 class ChartsData(BaseConsumer):
@@ -184,52 +187,82 @@ class ChartsData(BaseConsumer):
         self.contract_id = None
         self.month = None
         self.candle_graph_task = None
+        self.prices_task = None
+        self.close_price = None
+        self.pre_market_price = None
         super().__init__(*args, **kwargs)
 
     async def connect(self):
         await super().connect()
 
-        self.candle_graph_task = asyncio.create_task(self.candle_data())
 
+    async def disconnect(self, code):
+        print("=======================")
+        if self.candle_graph_task:
+            self.candle_graph_task.cancel()
+        if self.prices_task:
+            self.prices_task.cancel()
 
+        await super().disconnect(code)
 
     async def receive(self, text_data):
-        # Parse received JSON data
-        data = json.loads(text_data)
-        ticker = data.get("ticker")
-        authentication = self.ibkr.auth_status()
-        if not authentication.get("success"):
-            await self.send(text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
-            return
-        if not ticker:
-            await self.send(text_data=json.dumps({"error": "ticker is a required parameter.", "authentication": True}))
-            return
+        try:
+            data = json.loads(text_data)
+            ticker = data.get("ticker")
+            authentication = self.ibkr.auth_status()
+            if not authentication.get("success"):
+                await self.send(text_data=json.dumps({"authentication": False, "error": "You are not authenticated with IBKR. Please login first."}))
+                await self.close()
+                return
+            if not ticker:
+                await self.send(text_data=json.dumps({"error": "ticker is a required parameter.", "authentication": True}))
+                await self.close()
+                return
 
-        self.contract_id, self.month = await self.ticker_contract(ticker)
-        if not self.contract_id:
-            await self.send(text_data=json.dumps({"error": f"Unable to select contract for the selected ticker {ticker}"}))
-            return
+            self.contract_id, self.month = await self.ticker_contract(ticker)
+            if not self.contract_id:
+                await self.send(text_data=json.dumps({"error": f"Unable to select contract for the selected ticker {ticker}"}))
+                await self.close()
+                return
+            self.candle_graph_task = asyncio.create_task(self.candle_data())
+            self.prices_task = asyncio.create_task(self.updated_prices())
+        except Exception as e:
+            print(e.args)
 
-        self.candle_graph_task = asyncio.create_task(self.candle_data())
+
+    async def updated_prices(self):
+        while self.keep_running:
+            if not self.contract_id:
+                await asyncio.sleep(0.2)
+                continue
+            live_data_response = self.ibkr.last_day_price(self.contract_id)
+            if live_data_response.get('success'):
+                self.pre_market_price = live_data_response.get('last_day_price')
+                await self.send(text_data=json.dumps({'pre_market_price': self.pre_market_price}))
+                await asyncio.sleep(1)
+
 
     async def candle_data(self):
         while self.keep_running:
             if not self.contract_id:
                 await asyncio.sleep(0.1)
                 continue
+            history_data = self.ibkr.historical_data(self.contract_id, '1min', '5min')
 
-            ticker_data = await self.fetch_live_data(self.contract_id)
-            if ticker_data and isinstance(ticker_data, list):
-                timestamp_ms = ticker_data[0].get("_updated")
-                if timestamp_ms:
-                    timestamp_s = timestamp_ms / 1000
-                    iso_date = datetime.datetime.utcfromtimestamp(timestamp_s).isoformat() + "Z"
-                price = ticker_data[0].get("31")
-                if not price:
-                    continue
-                self.stream_data.append({"datetime": iso_date, "price": price})
-                await self.send(text_data=json.dumps({"charts_data": self.stream_data, "contract_id": self.contract_id}))
+            if history_data.get('success'):
+                try:
+                    formatted_data = transform_ibkr_data(history_data.get('data'), self.contract_id)
+                except Exception as e:
+                    print(e.args)
+                await self.send(text_data=json.dumps(formatted_data))
                 await asyncio.sleep(0)
+            else:
+                await self.send(text_data=json.dumps({"conId": self.contract_id}))
+                await asyncio.sleep(0)
+
+
+
+            await asyncio.sleep(5)
 
 
 class StreamOptionData(BaseConsumer):
@@ -237,8 +270,6 @@ class StreamOptionData(BaseConsumer):
         self.contract_id = None
         self.fetch_strikes_task = None
         self.live_data_task = None
-        self.update_last_price_task = None
-        self.update_live_data_task = None
         self.all_strikes = {}
         super().__init__(*args, **kwargs)
 

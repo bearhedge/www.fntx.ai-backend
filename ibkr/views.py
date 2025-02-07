@@ -1,4 +1,6 @@
 import json
+from datetime import timedelta
+
 import requests
 import pandas as pd
 import numpy as np
@@ -22,7 +24,8 @@ from core.views import IBKRBase
 from ibkr.models import OnBoardingProcess, TradingStatus, Instrument, TimerData, SystemData, PlaceOrder
 from ibkr.serializers import UpperLowerBoundSerializer, TimerDataSerializer, OnboardingSerailizer, SystemDataSerializer, \
     TradingStatusSerializer, InstrumentSerializer, TimerDataListSerializer, \
-    SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer, PlaceOrderListSerializer
+    SystemDataListSerializer, HistoryDataSerializer, PlaceOrderSerializer, PlaceOrderListSerializer, \
+    UpdateOrderSerializer, DashBoardSerializer
 from ibkr.utils import fetch_bounds_from_json, transform_ibkr_data
 from ibkr.tasks import place_orders_task
 
@@ -294,10 +297,13 @@ class TimerDataViewSet(viewsets.ModelViewSet):
         today = now().date()
         if TimerData.objects.filter(user=request.user, created_at__date=today).exists():
             return Response({"error": "Timer already set for today."}, status=status.HTTP_400_BAD_REQUEST)
+        system_instance = SystemData.objects.filter(user=request.user, created_at__date=today).first()
+
         data = request.data
         data['original_timer_value'] = data.get('timer_value')
         data['timer_value'] = data.get('timer_value') - 1
         data['original_time_start'] = data.get('start_time')
+        data['system_data'] = system_instance.id
         serializer = TimerDataSerializer(data=request.data)
         if serializer.is_valid():
             timer = serializer.save(user=request.user)
@@ -493,8 +499,9 @@ class GetHistoryDataView(APIView, IBKRBase):
 class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
     permission_classes = [IsAuthenticated]
     serializer_class = PlaceOrderSerializer
+    serializer_class_update = UpdateOrderSerializer
     serializer_list_class = PlaceOrderListSerializer
-    http_method_names = ['post', 'get', 'delete', 'put']
+    http_method_names = ['post', 'get', 'delete', 'patch']
     queryset = PlaceOrder.objects.all()
 
     def __init__(self, *args, **kwargs):
@@ -502,12 +509,14 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
         IBKRBase.__init__(self)
 
     def get_serializer_class(self):
+        print(self.action)
         if self.action == 'list':
             return self.serializer_list_class
-        return self.serializer_class
+        elif self.action == 'create':
+            return self.serializer_class
+        return self.serializer_class_update
 
-
-    def create(self, request):
+    def _check_authentication(self):
         authentication = self.auth_status()
         if not authentication.get('success'):
             authenticated = False
@@ -515,6 +524,11 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
             authenticated = False
         else:
             authenticated = True
+
+        return authenticated
+
+    def create(self, request):
+        authenticated = self._check_authentication()
         if not authenticated:
             return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -528,12 +542,36 @@ class PlaceOrderView(viewsets.ModelViewSet, IBKRBase):
 
         return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-
     def list(self, request, *args, **kwargs):
+        put_orders = False
+        call_orders = False
         queryset = self.get_queryset()
-        queryset = queryset.filter(user=request.user, is_cancelled=False, created_at__date=now().date())
+        date = now().date()
+
+        queryset = queryset.filter(user=request.user, is_cancelled=False, created_at__date=date)
+
         serializer = self.get_serializer(queryset, many=True)
-        return Response({"data":serializer.data}, status=status.HTTP_200_OK)
+        for data in serializer.data:
+            if data.get('optionType') == 'call':
+                call_orders = True
+            elif data.get('optionType') == 'put':
+                put_orders = True
+        return Response({"data":serializer.data, "call_orders": call_orders, "put_orders": put_orders}, status=status.HTTP_200_OK)
+
+    def update(self, request, *args, **kwargs):
+        authenticated = self._check_authentication()
+        if not authenticated:
+            return Response({"error": "You have been logout from IBKR client portal. Please login to continue."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(data=serializer.data, status=status.HTTP_200_OK)
+
+        return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -582,15 +620,33 @@ class IBKRTokenView(APIView, IBKRBase):
 
         return Response(session_token, status=status.HTTP_200_OK)
 
-@extend_schema(tags=["SYSTEM"])
-class ClosePositionView(APIView, IBKRBase):
+@extend_schema(tags=["Dashboard"])
+class DashBoardView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = DashBoardSerializer
+    http_method_names = ['get']
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        IBKRBase.__init__(self)
+    def get(self, request):
+        today = now().date()
+        system_data = SystemData.objects.filter(user=request.user).order_by('-created_at').first()
 
-    def post(self, request):
-        data = request.data
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if system_data is not None:
+            serializer = self.serializer_class(system_data, context={'request': request})
+            return Response(serializer.data)
+        else:
+            return Response({"error": "No system data found."}, status=400)
+
+
+
+# @extend_schema(tags=["SYSTEM"])
+# class ClosePositionView(APIView, IBKRBase):
+#     permission_classes = [IsAuthenticated]
+#
+#     def __init__(self, **kwargs):
+#         super().__init__(**kwargs)
+#         IBKRBase.__init__(self)
+#
+#     def post(self, request):
+#         data = request.data
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
