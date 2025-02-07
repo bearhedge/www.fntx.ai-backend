@@ -28,6 +28,8 @@ class StrikesConsumer(BaseConsumer):
         self.update_live_data_task = asyncio.create_task(self.update_live_data())
 
     async def disconnect(self, code):
+        self.keep_running = False
+
         if self.send_place_order_task:
             self.send_place_order_task.cancel()
 
@@ -86,6 +88,8 @@ class TradeManagementConsumer(BaseConsumer):
         self.placed_orders_status = asyncio.create_task(self.orders_status())
 
     async def disconnect(self, code):
+        self.keep_running = False
+
         if self.placed_orders_status:
             self.placed_orders_status.cancel()
 
@@ -195,11 +199,12 @@ class ChartsData(BaseConsumer):
     async def connect(self):
         await super().connect()
 
-
     async def disconnect(self, code):
-        if self.candle_graph_task:
+        self.keep_running = False
+
+        if self.candle_graph_task and not self.candle_graph_task.done():
             self.candle_graph_task.cancel()
-        if self.prices_task:
+        if self.prices_task and not self.prices_task.done():
             self.prices_task.cancel()
 
         await super().disconnect(code)
@@ -246,6 +251,7 @@ class ChartsData(BaseConsumer):
             if not self.contract_id:
                 await asyncio.sleep(0.1)
                 continue
+            print("-------------------------found contract--------------------------")
             history_data = self.ibkr.historical_data(self.contract_id, '1min', '5min')
             print(history_data, "=====================")
             if history_data.get('success'):
@@ -260,8 +266,7 @@ class ChartsData(BaseConsumer):
                 await asyncio.sleep(0)
 
 
-
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
 
 class StreamOptionData(BaseConsumer):
@@ -280,6 +285,8 @@ class StreamOptionData(BaseConsumer):
         self.update_live_data_task = asyncio.create_task(self.update_live_data())
 
     async def disconnect(self, code):
+        self.keep_running = False
+
         if self.fetch_strikes_task:
             self.fetch_strikes_task.cancel()
 

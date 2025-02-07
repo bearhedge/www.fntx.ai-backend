@@ -51,8 +51,6 @@ class BaseConsumer(AsyncWebsocketConsumer):
         self.keep_running = True
 
     async def disconnect(self, code):
-        self.keep_running = False
-
         if self.update_last_price_task:
             self.update_last_price_task.cancel()
         if self.update_live_data_task:
