@@ -240,23 +240,21 @@ class ChartsData(BaseConsumer):
     async def updated_prices(self):
         while self.keep_running:
             if not self.contract_id:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.5)
                 continue
             live_data_response = self.ibkr.last_day_price(self.contract_id)
             if live_data_response.get('success'):
                 self.pre_market_price = live_data_response.get('last_day_price')
                 await self.send(text_data=json.dumps({'pre_market_price': self.pre_market_price}))
-                await asyncio.sleep(1)
+            await asyncio.sleep(1)
 
 
     async def candle_data(self):
         while self.keep_running:
-            print("-------------------------------candle-data-started------------------------------")
             if not self.contract_id:
                 await asyncio.sleep(0.1)
                 continue
-            print("-------------------------found contract--------------------------")
-            history_data = self.ibkr.historical_data(self.contract_id, '1min', '5min')
+            history_data = self.ibkr.historical_data(self.contract_id, '1min', '1min')
             print(history_data, "=====================")
             if history_data.get('success'):
                 try:
@@ -264,10 +262,8 @@ class ChartsData(BaseConsumer):
                 except Exception as e:
                     print(e.args)
                 await self.send(text_data=json.dumps(formatted_data))
-                await asyncio.sleep(0)
             else:
                 await self.send(text_data=json.dumps({"conId": self.contract_id}))
-                await asyncio.sleep(0)
 
 
             await asyncio.sleep(1)
