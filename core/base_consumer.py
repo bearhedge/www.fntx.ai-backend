@@ -22,7 +22,7 @@ class BaseConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         self.ibkr = IBKRBase()
         self.userObj = None
-        self.keep_running = False
+        self.keep_running = True
         self.month = None
         self.last_day_price = None
         self.update_last_price_task = None
@@ -48,9 +48,9 @@ class BaseConsumer(AsyncWebsocketConsumer):
             return
 
         await self.accept()
-        self.keep_running = True
 
     async def disconnect(self, code):
+        self.keep_running = False
         if self.update_last_price_task:
             self.update_last_price_task.cancel()
         if self.update_live_data_task:

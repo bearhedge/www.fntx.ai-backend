@@ -194,6 +194,7 @@ class ChartsData(BaseConsumer):
         self.prices_task = None
         self.close_price = None
         self.pre_market_price = None
+        self.keep_running = True
         super().__init__(*args, **kwargs)
 
     async def connect(self):
@@ -275,6 +276,7 @@ class StreamOptionData(BaseConsumer):
         self.fetch_strikes_task = None
         self.live_data_task = None
         self.all_strikes = {}
+        self.keep_running = True
         super().__init__(*args, **kwargs)
 
     async def connect(self):
